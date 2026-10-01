@@ -71,11 +71,11 @@ const VERSION_UPDATES: VersionUpdate[] = [
     links: [
       {
         label: '查看部署指南',
-        href: 'https://github.com/Ouonnki/OuonnkiTV/blob/main/docs/deployment.md',
+        href: '',
       },
       {
         label: '查看配置说明',
-        href: 'https://github.com/Ouonnki/OuonnkiTV/blob/main/docs/configuration.md',
+        href: '',
       },
     ],
   },

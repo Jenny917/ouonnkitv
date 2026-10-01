@@ -29,6 +29,8 @@
 
 ## 📖 文档
 
+跨设备云同步（Vercel + Supabase）：[配置指南](docs/cloud-sync.md)
+
 | 文档 | 说明 |
 | ---- | ---- |
 | [部署指南](docs/deployment.md) | Docker / Vercel / Cloudflare / Netlify / 本地开发 / 更新同步 |

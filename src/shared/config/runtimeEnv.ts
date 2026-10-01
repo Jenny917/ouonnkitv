@@ -1,4 +1,6 @@
 export const PUBLIC_ENV_KEYS = [
+  'OKI_SUPABASE_URL',
+  'OKI_SUPABASE_ANON_KEY',
   'OKI_INITIAL_VIDEO_SOURCES',
   'OKI_TMDB_API_TOKEN',
   'OKI_TMDB_API_BASE_URL',
@@ -17,6 +19,8 @@ type RuntimeConfigGlobal = typeof globalThis & {
 
 function getBuildTimeEnv(key: PublicEnvKey): string | undefined {
   const buildTimeConfig: RuntimeConfig = {
+    OKI_SUPABASE_URL: import.meta.env.OKI_SUPABASE_URL,
+    OKI_SUPABASE_ANON_KEY: import.meta.env.OKI_SUPABASE_ANON_KEY,
     OKI_INITIAL_VIDEO_SOURCES: import.meta.env.OKI_INITIAL_VIDEO_SOURCES,
     OKI_TMDB_API_TOKEN: import.meta.env.OKI_TMDB_API_TOKEN,
     OKI_TMDB_API_BASE_URL: import.meta.env.OKI_TMDB_API_BASE_URL,

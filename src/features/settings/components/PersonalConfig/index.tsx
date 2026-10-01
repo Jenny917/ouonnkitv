@@ -1,4 +1,5 @@
 import { ArchiveRestore, Settings2 } from 'lucide-react'
+import CloudSync from '../CloudSync'
 import { useRef, useState } from 'react'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
@@ -31,6 +32,7 @@ export default function PersonalConfig() {
       description="导入、导出和恢复你的完整配置（设置 + 视频源）。"
       showHeader={false}
     >
+      <CloudSync />
       <SettingsSection
         title="配置管理"
         description="支持文件、URL、文本三种导入方式与两种导出方式。"

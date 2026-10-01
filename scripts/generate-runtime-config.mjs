@@ -3,6 +3,8 @@ import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const PUBLIC_ENV_KEYS = [
+  'OKI_SUPABASE_URL',
+  'OKI_SUPABASE_ANON_KEY',
   'OKI_INITIAL_VIDEO_SOURCES',
   'OKI_TMDB_API_TOKEN',
   'OKI_TMDB_API_BASE_URL',
