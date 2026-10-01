@@ -52,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: '请检查用户名和密码（密码至少 10 个字符）' })
     const action = parsed.data
     if (action.action === 'create') {
-      const { error } = await admin.auth.admin.createUser({
+      const { data: created, error } = await admin.auth.admin.createUser({
         email: accountEmail(action.username),
         password: action.password,
         email_confirm: true,
@@ -60,6 +60,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       if (error)
         return res.status(400).json({ error: '创建失败，请检查用户名是否已存在及密码要求' })
+      if (!created.user) return res.status(500).json({ error: '账号创建未返回用户' })
+      const { error: profileError } = await admin.from('user_accounts').insert({
+        id: created.user.id,
+        username: action.username,
+        role: 'user',
+        enabled: true,
+      })
+      if (profileError) {
+        await admin.auth.admin.deleteUser(created.user.id)
+        return res
+          .status(400)
+          .json({ error: '账号资料创建失败，请检查数据库迁移和用户名是否已存在' })
+      }
     } else {
       const { data: target, error: targetError } = await admin
         .from('user_accounts')

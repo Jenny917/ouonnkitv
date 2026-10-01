@@ -8,6 +8,7 @@ An administrator creates usernames and passwords. Users sign in once and their f
 2. Open the connected Supabase dashboard → SQL Editor and run these migrations **in order, once each**:
    - [Sync records](../supabase/migrations/202610010001_user_sync.sql)
    - [Managed accounts](../supabase/migrations/202610010002_managed_accounts.sql)
+   - [Provisioning fix](../supabase/migrations/202610010003_account_provisioning_fix.sql)
 3. Under Supabase Authentication, keep the email/password provider enabled but **disable Allow new users to sign up**. Keep multiple simultaneous sessions allowed. The application uses internal, automatically confirmed email-shaped identifiers for Supabase Auth; users only enter usernames, and no mailbox or SMTP is needed. The database trigger also rejects accounts not provisioned by the server admin API.
 4. Configure the Vercel project variables:
 
@@ -40,6 +41,8 @@ Run from the project directory with Node 20.6+:
 node --env-file=.env.admin scripts/create-admin.mjs
 ```
 
+If bootstrap fails, the script prints Supabase's safe error code/status/message. The most common causes are a wrong project URL or service key, the migrations being run in a different project, an existing admin/user with the same generated identifier, or a password rejected by the project's Auth password policy.
+
 The script makes a one-time remote API call; it does not install a local database or server. It refuses to bootstrap if an admin already exists. Remove the private file after successful setup. Never put `ADMIN_PASSWORD` in a public environment variable. Operator-level recovery of the admin account can be done through Supabase's Admin API using the server secret; ordinary users cannot reset an admin account through the app.
 
 ## Admin and user flow
@@ -64,7 +67,7 @@ There is no automatic import of old device data when signing in. If desired, the
 
 ## Upgrading the earlier email-code prototype
 
-Keep the first migration if it is already applied; run only the second migration. Existing email-only users are not automatically promoted or converted, and their cloud rows are not deleted. Create the managed admin/users above and explicitly import local favorites/history as needed. Email templates and SMTP setup are no longer required by this app.
+Keep the first two migrations if they are already applied; run the third provisioning-fix migration too. Existing email-only users are not automatically promoted or converted, and their cloud rows are not deleted. Create the managed admin/users above and explicitly import local favorites/history as needed. Email templates and SMTP setup are no longer required by this app.
 
 ## Verify after deployment
 
