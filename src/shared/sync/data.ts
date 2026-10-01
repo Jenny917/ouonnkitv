@@ -48,19 +48,19 @@ const favoriteSchema = z.discriminatedUnion('sourceType', [
 ])
 const historySchema = z.object({
   recordType: z.enum(['cms', 'tmdb']),
-  title: z.string(),
-  imageUrl: z.string(),
-  episodeIndex: z.number().int(),
+  title: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+  episodeIndex: z.coerce.number().int(),
   episodeName: z.string().nullable().optional(),
-  sourceCode: z.string(),
-  sourceName: z.string(),
-  vodId: z.string(),
+  sourceCode: z.string().nullable().optional(),
+  sourceName: z.string().nullable().optional(),
+  vodId: z.string().nullable().optional(),
   tmdbMediaType: z.enum(['movie', 'tv']).nullable().optional(),
-  tmdbId: z.number().nullable().optional(),
-  tmdbSeasonNumber: z.number().nullable().optional(),
-  timestamp: z.number(),
-  playbackPosition: z.number().nonnegative(),
-  duration: z.number().nonnegative(),
+  tmdbId: z.coerce.number().nullable().optional(),
+  tmdbSeasonNumber: z.coerce.number().nullable().optional(),
+  timestamp: z.coerce.number(),
+  playbackPosition: z.coerce.number().nonnegative(),
+  duration: z.coerce.number().nonnegative(),
 })
 
 // Whitelist preferences: credentials, proxy URLs and source configuration never enter sync.
@@ -116,6 +116,11 @@ export function validPayload(row: SyncRecord): boolean {
     if (!parsed.success) return false
     const normalized = {
       ...parsed.data,
+      title: parsed.data.title ?? '',
+      imageUrl: parsed.data.imageUrl ?? '',
+      sourceCode: parsed.data.sourceCode ?? '',
+      sourceName: parsed.data.sourceName ?? '',
+      vodId: parsed.data.vodId ?? '',
       episodeName: parsed.data.episodeName ?? undefined,
       tmdbMediaType: parsed.data.tmdbMediaType ?? undefined,
       tmdbId: parsed.data.tmdbId ?? undefined,
@@ -123,6 +128,23 @@ export function validPayload(row: SyncRecord): boolean {
     return getHistoryItemKey(normalized) === row.item_key
   }
   return preferenceSchemas[row.item_key]?.safeParse(row.value).success ?? false
+}
+
+function normalizedHistory(value: unknown): ViewingHistoryItem | null {
+  const parsed = historySchema.safeParse(value)
+  if (!parsed.success) return null
+  return {
+    ...parsed.data,
+    title: parsed.data.title ?? '',
+    imageUrl: parsed.data.imageUrl ?? '',
+    sourceCode: parsed.data.sourceCode ?? '',
+    sourceName: parsed.data.sourceName ?? '',
+    vodId: parsed.data.vodId ?? '',
+    episodeName: parsed.data.episodeName ?? undefined,
+    tmdbMediaType: parsed.data.tmdbMediaType ?? undefined,
+    tmdbId: parsed.data.tmdbId ?? undefined,
+    tmdbSeasonNumber: parsed.data.tmdbSeasonNumber ?? undefined,
+  }
 }
 
 export function applyJournal(journal: Journal) {
@@ -133,7 +155,10 @@ export function applyJournal(journal: Journal) {
   for (const row of Object.values(journal)) {
     if (row.deleted || !validPayload(row)) continue
     if (row.kind === 'favorite') favorites.push(row.value as FavoriteItem)
-    if (row.kind === 'history') history.push(row.value as ViewingHistoryItem)
+    if (row.kind === 'history') {
+      const item = normalizedHistory(row.value)
+      if (item) history.push(item)
+    }
     if (row.kind === 'preference') {
       const [group, field] = row.item_key.split('.')
       ;(group === 'search' ? search : playback)[field] = row.value
