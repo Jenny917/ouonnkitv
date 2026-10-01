@@ -112,20 +112,8 @@ export function validPayload(row: SyncRecord): boolean {
     return parsed.success && parsed.data.id === row.item_key
   }
   if (row.kind === 'history') {
-    const parsed = historySchema.safeParse(row.value)
-    if (!parsed.success) return false
-    const normalized = {
-      ...parsed.data,
-      title: parsed.data.title ?? '',
-      imageUrl: parsed.data.imageUrl ?? '',
-      sourceCode: parsed.data.sourceCode ?? '',
-      sourceName: parsed.data.sourceName ?? '',
-      vodId: parsed.data.vodId ?? '',
-      episodeName: parsed.data.episodeName ?? undefined,
-      tmdbMediaType: parsed.data.tmdbMediaType ?? undefined,
-      tmdbId: parsed.data.tmdbId ?? undefined,
-    }
-    return getHistoryItemKey(normalized) === row.item_key
+    const parsed = normalizedLegacyHistory(row.value, row.item_key)
+    return parsed !== null && getHistoryItemKey(parsed) === row.item_key
   }
   return preferenceSchemas[row.item_key]?.safeParse(row.value).success ?? false
 }
@@ -147,6 +135,32 @@ function normalizedHistory(value: unknown): ViewingHistoryItem | null {
   }
 }
 
+function normalizedLegacyHistory(value: unknown, itemKey: string): ViewingHistoryItem | null {
+  const parsed = normalizedHistory(value)
+  if (parsed && getHistoryItemKey(parsed) === itemKey) return parsed
+  if (!value || typeof value !== 'object') return null
+  const parts = itemKey.split('::')
+  if (parts.length !== 5 || parts[0] !== 'tmdb') return null
+  const raw = value as Record<string, unknown>
+  const fallback = historySchema.safeParse({
+    ...raw,
+    recordType: 'tmdb',
+    tmdbMediaType: parts[1],
+    tmdbId: parts[2],
+    tmdbSeasonNumber: parts[3] === 'none' ? null : parts[3],
+    episodeIndex: parts[4],
+    title: raw.title ?? '',
+    imageUrl: raw.imageUrl ?? '',
+    sourceCode: raw.sourceCode ?? '',
+    sourceName: raw.sourceName ?? '',
+    vodId: raw.vodId ?? '',
+    timestamp: raw.timestamp ?? 0,
+    playbackPosition: raw.playbackPosition ?? 0,
+    duration: raw.duration ?? 0,
+  })
+  return fallback.success ? normalizedHistory(fallback.data) : null
+}
+
 export function applyJournal(journal: Journal) {
   const favorites: FavoriteItem[] = []
   const history: ViewingHistoryItem[] = []
@@ -156,7 +170,7 @@ export function applyJournal(journal: Journal) {
     if (row.deleted || !validPayload(row)) continue
     if (row.kind === 'favorite') favorites.push(row.value as FavoriteItem)
     if (row.kind === 'history') {
-      const item = normalizedHistory(row.value)
+      const item = normalizedLegacyHistory(row.value, row.item_key)
       if (item) history.push(item)
     }
     if (row.kind === 'preference') {
