@@ -1,198 +1,91 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
-import { ArrowRight, Lock } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Lock } from 'lucide-react'
 import { Input } from '@/shared/components/ui/input'
 import { Button } from '@/shared/components/ui/button'
-import { Spinner } from '@/shared/components/ui/spinner'
-import { useAuthStore } from '@/shared/store/authStore'
 import { OkiLogo } from '@/shared/components/icons'
-import { toast } from 'sonner'
-import { getPublicEnv } from '@/shared/config/runtimeEnv'
+import { startAuth, useAuthStore } from '@/shared/store/authStore'
+import { startSync } from '@/shared/sync/service'
+import { syncClient } from '@/shared/sync/client'
 
-interface AuthGuardProps {
-  children: React.ReactNode
-}
-
-const easeOutQuad = [0.25, 0.46, 0.45, 0.94] as const
-
-export default function AuthGuard({ children }: AuthGuardProps) {
-  const { login, validateSession } = useAuthStore()
+export default function AuthGuard({ children }: { children: ReactNode }) {
+  const { account, initialized, error, login } = useAuthStore()
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [isDismissing, setIsDismissing] = useState(false)
-  const revealRef = useRef<HTMLDivElement>(null)
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const revealOriginRef = useRef('50% 50%')
-
-  const accessPassword = getPublicEnv('OKI_ACCESS_PASSWORD')
-  const isProtectionEnabled = !!accessPassword && accessPassword.trim() !== ''
-
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
   useEffect(() => {
-    const checkAuth = async () => {
-      if (!isProtectionEnabled) {
-        setIsAuthenticated(true)
-        return
-      }
-      const isValid = await validateSession()
-      setIsAuthenticated(isValid)
+    const stopSync = startSync()
+    const stopAuth = startAuth()
+    return () => {
+      stopAuth()
+      stopSync()
     }
-    checkAuth()
-  }, [validateSession, isProtectionEnabled])
-
-  // 验证成功后，从按钮位置扩散圆形 clip-path 揭开页面内容
-  useEffect(() => {
-    if (!isDismissing) return
-
-    const reveal = revealRef.current
-    if (reveal) {
-      const origin = revealOriginRef.current
-      const animation = reveal.animate(
-        [{ clipPath: `circle(0% at ${origin})` }, { clipPath: `circle(150% at ${origin})` }],
-        {
-          duration: 600,
-          easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-          fill: 'forwards',
-        },
-      )
-      animation.onfinish = () => setIsAuthenticated(true)
-
-      return () => animation.cancel()
-    }
-
-    setIsAuthenticated(true)
-  }, [isDismissing])
-
-  if (isProtectionEnabled && isAuthenticated === null) {
-    return null
-  }
-
-  if (!isProtectionEnabled || isAuthenticated) {
-    return <>{children}</>
-  }
-
-  const handleLogin = async () => {
-    setIsLoading(true)
-    await new Promise(resolve => setTimeout(resolve, 600))
-
-    const success = await login(password)
-    if (success) {
-      toast.success('验证成功')
-      if (buttonRef.current) {
-        const rect = buttonRef.current.getBoundingClientRect()
-        revealOriginRef.current = `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px`
-      }
-      setIsDismissing(true)
-    } else {
-      toast.error('验证失败')
-      setIsLoading(false)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleLogin()
-    }
-  }
-
+  }, [])
+  if (account) return <>{children}</>
   return (
-    <>
-      {/* 验证成功后渲染页面内容，clip-path 从按钮位置向外扩散 */}
-      {isDismissing && (
-        <div
-          ref={revealRef}
-          className="fixed inset-0 z-[10000]"
-          style={{ clipPath: `circle(0% at ${revealOriginRef.current})` }}
-        >
-          {children}
-        </div>
-      )}
-
-      {/* 守卫层 */}
-      <div className="bg-background fixed inset-0 z-[9999] flex flex-col md:flex-row">
-        {/* 左侧品牌区 — 移动端顶部横栏，桌面端左侧半屏 */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, ease: easeOutQuad }}
-          className="bg-muted/40 relative flex shrink-0 flex-col items-center justify-center overflow-hidden px-8 py-12 md:w-1/2 md:py-0"
-        >
-          {/* 装饰性模糊光晕 */}
-          <div className="bg-primary/10 pointer-events-none absolute -top-20 -left-20 size-72 rounded-full blur-3xl" />
-          <div className="bg-primary/5 pointer-events-none absolute -right-16 -bottom-16 size-56 rounded-full blur-3xl" />
-
-          <div className="relative flex flex-col items-center gap-4">
-            <motion.div
-              initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.5, delay: 0.1, ease: easeOutQuad }}
-              className="flex flex-col items-center gap-3"
-            >
-              <OkiLogo size={80} />
-              <div className="text-xl font-bold tracking-widest">xkaTV</div>
-            </motion.div>
-
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.25, ease: easeOutQuad }}
-              className="text-muted-foreground max-w-xs text-center text-sm"
-            >
-              你的私人流媒体影院
-            </motion.p>
-          </div>
-        </motion.div>
-
-        {/* 右侧表单区 — 移动端占满剩余空间，桌面端右侧半屏 */}
-        <div className="flex flex-1 flex-col items-center justify-center px-8 py-12 md:px-16">
-          <div className="w-full max-w-sm space-y-8">
-            {/* 信息区域 */}
-            <motion.div
-              initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.5, delay: 0.15, ease: easeOutQuad }}
-              className="space-y-4"
-            >
-              <div className="bg-muted/70 ring-border/60 flex size-12 items-center justify-center rounded-xl ring-1">
-                <Lock className="text-muted-foreground size-5" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold">访问受限</h1>
-                <p className="text-muted-foreground mt-1.5 text-sm">
-                  当前站点通过密码保护，请输入访问密码以继续
-                </p>
-              </div>
-            </motion.div>
-
-            {/* 表单区域 */}
-            <motion.div
-              initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.5, delay: 0.25, ease: easeOutQuad }}
-            >
-              <div className="flex items-center gap-2">
-                <Input
-                  type="password"
-                  placeholder="请输入访问密码"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="h-11 rounded-full"
-                />
-                <Button
-                  ref={buttonRef}
-                  size="icon-lg"
-                  className="shrink-0 rounded-full"
-                  onClick={handleLogin}
-                  disabled={isLoading}
-                >
-                  {isLoading ? <Spinner size="sm" /> : <ArrowRight className="size-5" />}
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        </div>
+    <div className="bg-background flex min-h-dvh flex-col md:flex-row">
+      <div className="bg-muted/40 flex flex-col items-center justify-center gap-4 px-8 py-12 md:w-1/2">
+        <OkiLogo size={80} />
+        <div className="text-xl font-bold tracking-widest">xkaTV</div>
+        <p className="text-muted-foreground text-sm">你的私人流媒体影院</p>
       </div>
-    </>
+      <div className="flex flex-1 items-center justify-center px-8 py-12">
+        <form
+          className="w-full max-w-sm space-y-5"
+          onSubmit={event => {
+            event.preventDefault()
+            if (busy) return
+            setBusy(true)
+            setMessage('')
+            void login(username, password)
+              .then(() => setPassword(''))
+              .catch(error => {
+                setMessage(error instanceof Error ? error.message : '登录失败')
+              })
+              .finally(() => setBusy(false))
+          }}
+        >
+          <Lock className="text-muted-foreground size-6" />
+          <div>
+            <h1 className="text-2xl font-semibold">登录账号</h1>
+            <p className="text-muted-foreground mt-2 text-sm">
+              使用管理员分配的账号登录，自动同步你的收藏与观看进度。
+            </p>
+          </div>
+          <label className="block space-y-2 text-sm">
+            <span>用户名</span>
+            <Input
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              maxLength={32}
+              value={username}
+              onChange={event => setUsername(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-2 text-sm">
+            <span>密码</span>
+            <Input
+              type="password"
+              autoComplete="current-password"
+              required
+              maxLength={128}
+              value={password}
+              onChange={event => setPassword(event.target.value)}
+            />
+          </label>
+          <Button className="w-full" type="submit" disabled={busy || !initialized || !syncClient}>
+            {busy || !initialized ? '正在验证…' : '登录'}
+          </Button>
+          {(message || error) && (
+            <p role="alert" className="text-destructive text-sm">
+              {message || error}
+            </p>
+          )}
+          <p className="text-muted-foreground text-xs">没有账号或忘记密码？请联系管理员。</p>
+        </form>
+      </div>
+    </div>
   )
 }

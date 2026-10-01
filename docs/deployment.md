@@ -39,8 +39,9 @@ docker-compose up -d --build
    # 禁用分析（建议开启）
    OKI_DISABLE_ANALYTICS=true
 
-   # 访问密码（可选）
-   OKI_ACCESS_PASSWORD=your_secure_password
+   # 账号登录公开配置（完整步骤见 docs/cloud-sync.md）
+   OKI_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+   OKI_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLIC_KEY
    ```
 
    > 中国大陆网络环境如遇 TMDB 官方域名访问不稳定，建议改为：

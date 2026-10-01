@@ -12,25 +12,11 @@ import { useSubscriptionStore } from '@/shared/store/subscriptionStore'
 import { useSubscriptionAutoRefresh } from '@/shared/hooks/useSubscriptionAutoRefresh'
 import { useScrollChromeVisibility } from '@/shared/hooks'
 import { useLocation } from 'react-router'
-import { getInitialContentConfigId, getPublicEnv } from '@/shared/config/runtimeEnv'
+import { getInitialContentConfigId } from '@/shared/config/runtimeEnv'
 
 const UpdateModal = lazy(() => import('@/shared/components/UpdateModal'))
 
 export default function MainLayout() {
-  useEffect(() => {
-    if (!getPublicEnv('OKI_SUPABASE_URL') || !getPublicEnv('OKI_SUPABASE_ANON_KEY')) return
-    let cancelled = false
-    let stop: (() => void) | undefined
-    void import('@/shared/sync/service')
-      .then(({ startSync }) => {
-        if (!cancelled) stop = startSync()
-      })
-      .catch(error => console.error('Unable to start cloud sync', error))
-    return () => {
-      cancelled = true
-      stop?.()
-    }
-  }, [])
   const { hasNewVersion, setShowUpdateModal } = useVersionStore()
   const { system } = useSettingStore()
   const { initializeEnvSources } = useApiStore()

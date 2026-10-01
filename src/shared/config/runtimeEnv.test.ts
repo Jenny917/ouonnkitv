@@ -7,20 +7,20 @@ type RuntimeConfigGlobal = typeof globalThis & {
 
 const runtimeGlobal = globalThis as RuntimeConfigGlobal
 const originalRuntimeConfig = runtimeGlobal.__OKI_RUNTIME_CONFIG__
-const originalBuildTimePassword = import.meta.env.OKI_ACCESS_PASSWORD
+const originalBuildTimePassword = import.meta.env.OKI_SUPABASE_URL
 
 describe('getPublicEnv', () => {
   afterEach(() => {
     runtimeGlobal.__OKI_RUNTIME_CONFIG__ = originalRuntimeConfig
-    import.meta.env.OKI_ACCESS_PASSWORD = originalBuildTimePassword
+    import.meta.env.OKI_SUPABASE_URL = originalBuildTimePassword
   })
 
   it('Docker 运行时配置优先于构建时配置', () => {
     runtimeGlobal.__OKI_RUNTIME_CONFIG__ = {
-      OKI_ACCESS_PASSWORD: 'runtime-password',
+      OKI_SUPABASE_URL: 'runtime-password',
     }
 
-    expect(getPublicEnv('OKI_ACCESS_PASSWORD')).toBe('runtime-password')
+    expect(getPublicEnv('OKI_SUPABASE_URL')).toBe('runtime-password')
   })
 
   it('显式空值可以清除构建时配置', () => {
@@ -33,9 +33,9 @@ describe('getPublicEnv', () => {
 
   it('没有 Docker 运行时值时回退到 Vite 构建时配置', () => {
     runtimeGlobal.__OKI_RUNTIME_CONFIG__ = {}
-    import.meta.env.OKI_ACCESS_PASSWORD = 'build-time-password'
+    import.meta.env.OKI_SUPABASE_URL = 'build-time-password'
 
-    expect(getPublicEnv('OKI_ACCESS_PASSWORD')).toBe('build-time-password')
+    expect(getPublicEnv('OKI_SUPABASE_URL')).toBe('build-time-password')
   })
 
   it('初始内容环境变量变化时生成不同配置标识', () => {

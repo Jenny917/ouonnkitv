@@ -137,10 +137,11 @@ export function applyJournal(journal: Journal) {
     playback: { ...state.playback, ...playback },
   }))
   const availableIds = new Set(favorites.map(item => item.id))
-  useFavoritesStore.setState(state => ({
+  const selectedIds = useFavoritesStore.getState().selectedIds
+  useFavoritesStore.setState({
     favorites,
-    selectedIds: new Set([...state.selectedIds].filter(id => availableIds.has(id))),
-  }))
+    selectedIds: new Set([...selectedIds].filter(id => availableIds.has(id))),
+  })
   useFavoritesStore.getState()._applyFilters()
   useViewingHistoryStore.setState({
     viewingHistory: history.sort((a, b) => b.timestamp - a.timestamp),

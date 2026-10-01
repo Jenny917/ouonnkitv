@@ -8,7 +8,7 @@ import {
 describe('generate runtime config', () => {
   it('只导出支持的公开环境变量，并保留显式空值', () => {
     const config = collectRuntimeConfig({
-      OKI_ACCESS_PASSWORD: '',
+      OKI_SUPABASE_URL: '',
       OKI_INITIAL_VIDEO_SOURCES: '[{"name":"测试源"}]',
       PRIVATE_SECRET: 'never-export',
     })
@@ -16,7 +16,7 @@ describe('generate runtime config', () => {
     expect(Object.keys(config).every(key => PUBLIC_ENV_KEYS.includes(key))).toBe(true)
     expect(config).toEqual({
       OKI_INITIAL_VIDEO_SOURCES: '[{"name":"测试源"}]',
-      OKI_ACCESS_PASSWORD: '',
+      OKI_SUPABASE_URL: '',
     })
   })
 

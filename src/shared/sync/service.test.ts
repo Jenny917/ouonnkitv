@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from '@supabase/supabase-js'
 import { useViewingHistoryStore } from '@/shared/store/viewingHistoryStore'
 import { useFavoritesStore } from '@/features/favorites/store/favoritesStore'
+import { useAuthStore } from '@/shared/store/authStore'
 import { useSettingStore } from '@/shared/store/settingStore'
 import type { ViewingHistoryItem } from '@/shared/types'
 import { recordKey, type SyncRecord } from './records'
@@ -60,6 +61,20 @@ beforeEach(() => {
   useSettingStore.getState().resetSettings()
   mocks.rpc.mockReset().mockResolvedValue({ error: null })
   mocks.range.mockReset().mockResolvedValue({ data: [], error: null })
+  useAuthStore.setState({ session: null, account: null })
+  mocks.authCallback = (_event, value) =>
+    useAuthStore.setState({
+      session: value,
+      account: value
+        ? {
+            id: value.user.id,
+            username: value.user.id,
+            role: 'user',
+            enabled: true,
+            created_at: '2026-10-01',
+          }
+        : null,
+    })
   stop = startSync()
 })
 afterEach(() => {
@@ -77,9 +92,7 @@ describe('cloud sync lifecycle', () => {
       'guest',
     ])
     mocks.authCallback!('SIGNED_IN', session('bob'))
-    expect(useViewingHistoryStore.getState().viewingHistory.map(row => row.vodId)).toEqual([
-      'guest',
-    ])
+    expect(useViewingHistoryStore.getState().viewingHistory).toEqual([])
     mocks.authCallback!('SIGNED_IN', session('alice'))
     expect(
       useViewingHistoryStore.getState().viewingHistory.some(row => row.vodId === 'alice-private'),
@@ -103,6 +116,7 @@ describe('cloud sync lifecycle', () => {
 
   it('ignores responses from an account that signed out during upload', async () => {
     mocks.authCallback!('SIGNED_IN', session('alice'))
+    useViewingHistoryStore.getState().addViewingHistory(item('guest'))
     let resolve!: (value: { error: null }) => void
     mocks.rpc.mockReturnValueOnce(
       new Promise(result => {
@@ -114,12 +128,13 @@ describe('cloud sync lifecycle', () => {
     mocks.authCallback!('SIGNED_IN', session('bob'))
     resolve({ error: null })
     await syncing
-    expect(useSyncStatus.getState().email).toBe('bob@example.com')
+    expect(useSyncStatus.getState().username).toBe('bob')
     expect(mocks.range).not.toHaveBeenCalled()
   })
 
   it('does not lose a progress update made while an upload is in flight', async () => {
     mocks.authCallback!('SIGNED_IN', session('alice'))
+    useViewingHistoryStore.getState().addViewingHistory(item('guest'))
     let resolve!: (value: { error: null }) => void
     mocks.rpc.mockReturnValueOnce(
       new Promise(result => {
@@ -151,6 +166,7 @@ describe('cloud sync lifecycle', () => {
     useSettingStore.getState().setSystemSettings({ tmdbApiToken: 'private-token' })
     useSettingStore.getState().setNetworkSettings({ proxyUrl: 'https://private-proxy.example' })
     mocks.authCallback!('SIGNED_IN', session('alice'))
+    useViewingHistoryStore.getState().addViewingHistory(item('check'))
     await syncNow()
     expect(JSON.stringify(mocks.rpc.mock.calls)).not.toContain('private-token')
     expect(JSON.stringify(mocks.rpc.mock.calls)).not.toContain('private-proxy')

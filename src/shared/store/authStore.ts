@@ -1,92 +1,109 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
-import { getPublicEnv } from '@/shared/config/runtimeEnv'
+import type { Session } from '@supabase/supabase-js'
+import { syncClient } from '@/shared/sync/client'
+import { accountEmail, accountSchema, type Account } from '../../../shared/account-rules'
 
-interface AuthState {
-  sessionToken: string | null
-  salt: string | null
-  isInitialized: boolean
+interface AuthStore {
+  session: Session | null
+  account: Account | null
+  initialized: boolean
+  error: string | null
+  login: (username: string, password: string) => Promise<void>
+  logout: () => Promise<void>
 }
 
-interface AuthActions {
-  login: (password: string) => Promise<boolean>
-  logout: () => void
-  validateSession: () => Promise<boolean>
+export const useAuthStore = create<AuthStore>(() => ({
+  session: null,
+  account: null,
+  initialized: false,
+  error: null,
+  login: async (username, password) => {
+    if (!syncClient) throw new Error('请先配置 Supabase')
+    const { data, error } = await syncClient.auth.signInWithPassword({
+      email: accountEmail(username),
+      password,
+    })
+    if (error) throw new Error('用户名或密码不正确，或登录请求过于频繁')
+    if (!data.session) throw new Error('登录失败，请重试')
+    await verifySession(data.session, ++generation)
+    if (!useAuthStore.getState().account)
+      throw new Error(useAuthStore.getState().error || '登录失败')
+  },
+  logout: async () => {
+    if (!syncClient) return
+    const { error } = await syncClient.auth.signOut({ scope: 'local' })
+    if (error) throw error
+    ++generation
+    useAuthStore.setState({ session: null, account: null, initialized: true, error: null })
+  },
+}))
+
+let generation = 0
+async function verifySession(session: Session | null, request: number) {
+  if (!syncClient) return
+  if (!session) {
+    if (request === generation)
+      useAuthStore.setState({ session: null, account: null, initialized: true })
+    return
+  }
+  try {
+    const { data, error } = await syncClient
+      .rpc('current_account')
+      .setHeader('Authorization', `Bearer ${session.access_token}`)
+    if (request !== generation) return
+    if (error) throw new Error('无法验证账号，请检查网络或数据库配置后重试')
+    const result = accountSchema.safeParse(data?.[0])
+    if (!result.success || !result.data.enabled || result.data.id !== session.user.id) {
+      useAuthStore.setState({
+        session: null,
+        account: null,
+        initialized: true,
+        error: '账号已停用或会话已失效，请重新登录或联系管理员',
+      })
+      return
+    }
+    useAuthStore.setState({ session, account: result.data, initialized: true, error: null })
+  } catch (error) {
+    if (request !== generation) return
+    useAuthStore.setState({
+      initialized: true,
+      error: error instanceof Error ? error.message : '账号验证失败',
+    })
+  }
 }
 
-type AuthStore = AuthState & AuthActions
-
-// Helper to generate a random salt
-const generateSalt = () => {
-  const array = new Uint8Array(16)
-  window.crypto.getRandomValues(array)
-  return Array.from(array)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
+export function startAuth(): () => void {
+  const client = syncClient
+  if (!client) {
+    useAuthStore.setState({ initialized: true, error: '请配置 Supabase 并创建管理员账号' })
+    return () => {}
+  }
+  let stopped = false
+  const {
+    data: { subscription },
+  } = client.auth.onAuthStateChange((_event, session) => {
+    const request = ++generation
+    if (session?.user.id !== useAuthStore.getState().session?.user.id) {
+      useAuthStore.setState({ session: null, account: null })
+    }
+    setTimeout(() => {
+      if (!stopped) void verifySession(session, request)
+    }, 0)
+  })
+  const refresh = () => {
+    void client.auth.getSession().then(({ data, error }) => {
+      if (!stopped && !error) void verifySession(data.session, ++generation)
+    })
+  }
+  window.addEventListener('focus', refresh)
+  window.addEventListener('online', refresh)
+  const interval = setInterval(refresh, 30_000)
+  return () => {
+    stopped = true
+    ++generation
+    subscription.unsubscribe()
+    clearInterval(interval)
+    window.removeEventListener('focus', refresh)
+    window.removeEventListener('online', refresh)
+  }
 }
-
-// Helper to compute SHA-256 hash
-const computeHash = async (message: string) => {
-  const msgBuffer = new TextEncoder().encode(message)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-export const useAuthStore = create<AuthStore>()(
-  persist(
-    (set, get) => ({
-      sessionToken: null,
-      salt: null,
-      isInitialized: false,
-
-      login: async (password: string) => {
-        const correctPassword = getPublicEnv('OKI_ACCESS_PASSWORD')
-        // If no password configured, always allow
-        if (!correctPassword) {
-          return true
-        }
-
-        if (password === correctPassword) {
-          const salt = generateSalt()
-          const token = await computeHash(correctPassword + salt)
-          set({ sessionToken: token, salt, isInitialized: true })
-          return true
-        }
-        return false
-      },
-
-      logout: () => set({ sessionToken: null, salt: null, isInitialized: true }),
-
-      validateSession: async () => {
-        const { sessionToken, salt } = get()
-        const correctPassword = getPublicEnv('OKI_ACCESS_PASSWORD')
-
-        // If no password configured, always valid
-        if (!correctPassword) {
-          return true
-        }
-
-        // If no token or salt, invalid
-        if (!sessionToken || !salt) {
-          return false
-        }
-
-        // Re-compute hash to verify
-        const expectedToken = await computeHash(correctPassword + salt)
-        if (sessionToken === expectedToken) {
-          return true
-        } else {
-          // Invalid token (tampered or changed password), clear it
-          set({ sessionToken: null, salt: null })
-          return false
-        }
-      },
-    }),
-    {
-      name: 'auth-storage',
-      storage: createJSONStorage(() => sessionStorage),
-      partialize: state => ({ sessionToken: state.sessionToken, salt: state.salt }),
-    },
-  ),
-)

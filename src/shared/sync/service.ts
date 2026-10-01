@@ -3,16 +3,17 @@ import type { Session } from '@supabase/supabase-js'
 import { useFavoritesStore } from '@/features/favorites/store/favoritesStore'
 import { useViewingHistoryStore } from '@/shared/store/viewingHistoryStore'
 import { useSettingStore } from '@/shared/store/settingStore'
+import { useAuthStore } from '@/shared/store/authStore'
 import { syncClient } from './client'
 import { applyJournal, seedJournal, snapshot, validPayload, type Snapshot } from './data'
 import { acknowledge, mergeRemote, newer, recordSchema, type Journal } from './records'
 
 export const useSyncStatus = create<{
-  email: string | null
+  username: string | null
   status: string
   error: string | null
   lastSynced: number | null
-}>(() => ({ email: null, status: '未登录', error: null, lastSynced: null }))
+}>(() => ({ username: null, status: '未登录', error: null, lastSynced: null }))
 
 const prefix = 'ouonnki-cloud-v1:'
 const ownerKey = `${prefix}owner`
@@ -182,10 +183,11 @@ function changeSession(session: Session | null) {
       }
     }
     if (nextOwner) {
-      if (!storedOwner) localStorage.setItem(guestKey, JSON.stringify(seedJournal(snapshot())))
+      if (!storedOwner && !localStorage.getItem(guestKey))
+        localStorage.setItem(guestKey, JSON.stringify(seedJournal(snapshot())))
       const cached = localStorage.getItem(prefix + nextOwner)
-      // First sign-in imports guest data at revision 0. Existing cloud records always win.
-      journal = cached ? readJournal(prefix + nextOwner) : seedJournal(snapshot())
+      // Never silently import one device's guest collection into a new account.
+      journal = cached ? readJournal(prefix + nextOwner) : {}
       owner = nextOwner
       localStorage.setItem(ownerKey, owner)
       save()
@@ -196,7 +198,7 @@ function changeSession(session: Session | null) {
       localStorage.removeItem(ownerKey)
     }
     useSyncStatus.setState({
-      email: session?.user.email ?? null,
+      username: useAuthStore.getState().account?.username ?? null,
       error: null,
       lastSynced: null,
       status: nextOwner ? '准备同步' : '未登录',
@@ -217,11 +219,13 @@ export function startSync(): () => void {
   if (!syncClient) return () => {}
   // A persisted owner may exist even if the saved session has expired.
   owner = null
-  const {
-    data: { subscription },
-  } = syncClient.auth.onAuthStateChange((_event, session) => {
+  const updateSession = (session: Session | null) => {
     if (!session && localStorage.getItem(ownerKey) && !owner) owner = localStorage.getItem(ownerKey)
     changeSession(session)
+  }
+  updateSession(useAuthStore.getState().session)
+  const unsubscribeAuth = useAuthStore.subscribe((state, previousState) => {
+    if (state.session !== previousState.session) updateSession(state.session)
   })
   const unsubscribers = [
     useFavoritesStore.subscribe(capture),
@@ -264,7 +268,7 @@ export function startSync(): () => void {
   return () => {
     generation++
     busy = false
-    subscription.unsubscribe()
+    unsubscribeAuth()
     unsubscribers.forEach(unsubscribe => unsubscribe())
     clearInterval(interval)
     if (timer) clearTimeout(timer)
@@ -275,4 +279,15 @@ export function startSync(): () => void {
     document.removeEventListener('visibilitychange', visible)
     document.removeEventListener('pause', paused, true)
   }
+}
+
+export function importDeviceCollection() {
+  if (!owner) return
+  const guest = readJournal(guestKey)
+  for (const [key, row] of Object.entries(guest)) {
+    if (row.kind !== 'preference' && !journal[key]) journal[key] = { ...row, pending: true }
+  }
+  save()
+  apply()
+  void syncNow()
 }

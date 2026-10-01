@@ -1,43 +1,81 @@
-# Cross-device sync on Vercel
+# Managed accounts and sync on Vercel
 
-The frontend stays on Vercel. Supabase provides email login and a private database for each user. No database server runs on your computer or Vercel filesystem.
+An administrator creates usernames and passwords. Users sign in once and their favorites, watch progress, and playback/search preferences sync automatically across their devices. Different accounts cannot read each other's cloud records. No email codes, public registration, or sync keys are used.
 
-## Setup
+## Fresh Supabase project from Vercel
 
-1. Create a Supabase project in a region near your users.
-2. In its SQL editor, run [the migration](../supabase/migrations/202610010001_user_sync.sql) once. It creates the table, per-user row-level security and atomic merge function.
-3. Enable email authentication. Under Authentication → Email Templates → Magic Link, include the code template `{{ .Token }}` instead of a link, for example `<p>Your OuonnkiTV login code is {{ .Token }}</p>`. The app asks for this code, so it works across devices without redirect configuration. Configure your email sender/SMTP for delivery to your users; Supabase's default sender has restrictions.
-4. Add these environment variables to the Vercel project for the environments you deploy:
+1. Install Supabase through Vercel Marketplace, create a project, and connect it to this app. Choose a region near your users. Set **Public Environment Variables Prefix** to `OKI_`; leave **Custom Prefix** empty/default. Check the resulting variable names.
+2. Open the connected Supabase dashboard → SQL Editor and run these migrations **in order, once each**:
+   - [Sync records](../supabase/migrations/202610010001_user_sync.sql)
+   - [Managed accounts](../supabase/migrations/202610010002_managed_accounts.sql)
+3. Under Supabase Authentication, keep the email/password provider enabled but **disable Allow new users to sign up**. Keep multiple simultaneous sessions allowed. The application uses internal, automatically confirmed email-shaped identifiers for Supabase Auth; users only enter usernames, and no mailbox or SMTP is needed. The database trigger also rejects accounts not provisioned by the server admin API.
+4. Configure the Vercel project variables:
 
-   ```text
-   OKI_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-   OKI_SUPABASE_ANON_KEY=YOUR_PUBLIC_PUBLISHABLE_OR_ANON_KEY
-   ```
+   | Variable                                                      | Value                                          |
+   | ------------------------------------------------------------- | ---------------------------------------------- |
+   | `OKI_SUPABASE_URL`                                            | Supabase project URL                           |
+   | `OKI_SUPABASE_PUBLISHABLE_KEY` **or** `OKI_SUPABASE_ANON_KEY` | Public publishable/legacy anon key             |
+   | `SUPABASE_SERVICE_ROLE_KEY` **or** `SUPABASE_SECRET_KEY`      | Supabase server secret/legacy service-role key |
 
-   Use the publishable key (or legacy `anon` key). Never put a secret or `service_role` key in these variables: `OKI_` variables are included in the browser build.
+   The server secret must **not** have an `OKI_`, `NEXT_PUBLIC_`, or other public prefix. It is only read by the Vercel `/api/accounts` function. Never paste it into the app or commit it. Remove the obsolete `OKI_ACCESS_PASSWORD` variable; choose a new admin password, because the old shared password was part of the browser configuration.
 
-5. Redeploy Vercel. Open Settings → Personal configuration (个人配置) → Cross-device cloud sync (跨设备云同步). Sign into the same email account on both devices.
+5. Bootstrap the first admin with the script below, then redeploy Vercel.
 
-Without both variables the app continues working locally and shows setup guidance in settings.
+Missing Supabase configuration shows setup guidance on the login screen; it does not open the site to anonymous users. The admin API is implemented for Vercel. Other hosts need an equivalent server route; `pnpm dev` alone does not run Vercel Functions. Use Vercel's local development environment to exercise account management locally.
 
-## Behavior
+## Create the first admin
 
-- Syncs favorites, episode playback progress, and playback/search preferences. Sources, subscriptions, API tokens, network configuration, search history, and caches are not synced. Use existing config import/export for sources; matching sources must be available on both devices for CMS playback.
-- Local edits display immediately and queue in local storage. Uploads are throttled to once per 10 seconds, with a pull every 30 seconds while the app is visible, plus sync on focus, reconnect, visibility change and video pause. Closing a browser may interrupt an upload; the queue resumes on the next visit.
-- First sign-in merges guest data into the account. Existing cloud records take precedence over this initial import. Later edits use the newest per-record timestamp, with a deterministic tie-breaker. Keep device clocks accurate. Progress uses the most recent edit, not the largest playback position, so rewinding works.
-- Deletions retain tombstones to prevent old devices restoring removed items. Local history limits may generate deletions that propagate to the account.
-- Signing out restores the previous guest data. Account caches and pending changes remain on that browser, isolated by user ID, for the next login. This is not a shared-computer privacy mode; clear site data to remove local caches (upload pending changes first).
-- Cloud data is protected by Supabase authentication and row-level security. The existing site access password is separate from cloud login. Sync is not end-to-end encrypted.
+After running both migrations, create a **local, private** `.env.admin` file (gitignored):
 
-## Verification after deployment
+```dotenv
+OKI_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_SECRET
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD="A_NEW_UNIQUE_PASSWORD_AT_LEAST_10_CHARACTERS"
+```
 
-1. Sign in on device A, add a favorite, then choose Sync now (立即同步).
-2. Sign in on device B with the same email. Confirm the favorite appears.
-3. Pause a video on A, sync, and reopen the app on B. Confirm the episode and resume position.
-4. Delete the favorite on B and sync both devices. Confirm it stays deleted.
-5. On A, go offline and add a different favorite. Reload, reconnect and sync. Confirm B receives it.
-6. Sign out and sign in with another account. Confirm the previous account's records are not imported.
+Run from the project directory with Node 20.6+:
 
-Automated checks cover merge conflicts, deletions, queued edits and account transitions. Live email delivery, database policies and two-device behavior must also be verified against your configured Supabase project.
+```sh
+node --env-file=.env.admin scripts/create-admin.mjs
+```
 
-References: [Supabase email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless), [row-level security](https://supabase.com/docs/guides/database/postgres/row-level-security), [SMTP setup](https://supabase.com/docs/guides/auth/auth-smtp).
+The script makes a one-time remote API call; it does not install a local database or server. It refuses to bootstrap if an admin already exists. Remove the private file after successful setup. Never put `ADMIN_PASSWORD` in a public environment variable. Operator-level recovery of the admin account can be done through Supabase's Admin API using the server secret; ordinary users cannot reset an admin account through the app.
+
+## Admin and user flow
+
+1. Sign in with the admin username and password.
+2. Open **Settings → Personal configuration (个人配置) → User management (用户管理)**.
+3. Create user `a` and a password of at least 10 characters. Usernames are case-insensitive, 1–32 characters, using letters, numbers, `_` or `-`, starting with a letter/number.
+4. User `a` signs in on a phone and laptop. Both use the same account data automatically. User `b` gets a separate collection. Admins manage account metadata; their app session does not receive another user's favorites or history.
+5. Reset a user's password or disable the account from this panel. Database authorization immediately blocks old sessions. Password reset requires fresh login on all devices; re-enabling an account does not restore its old sessions. Open apps check account status every 30 seconds and on focus/reconnect.
+
+There is no automatic import of old device data when signing in. If desired, the user can choose **Import this device's original favorites and history (导入此设备原有收藏与历史)**. Existing cloud records, including deletions, win over these imports. Verify that this is the user's own collection before importing on a shared device.
+
+## Sync behavior and limits
+
+- Local changes appear immediately. Uploads run within about 10 seconds during use, with a pull every 30 seconds while visible and sync on focus, reconnect, visibility change and video pause. Failed uploads remain queued locally.
+- Different items merge independently. Changes to the same item use the newest edit timestamp, with deterministic tie-breaking. Keep device clocks accurate. For two devices playing the same episode, the most recently saved position wins; there is not yet a separate playback-session history. Sync does not seek an already-playing video.
+- Deletions retain tombstones so older devices cannot resurrect removed items. Local history limits can produce deletions that sync to the account.
+- Sources, subscriptions, API tokens, network settings, search-history text and caches are not synced. Import/export source configuration separately; CMS playback needs matching sources on each device.
+- Signing out affects only the current device. It restores the previous guest snapshot locally, while the login screen blocks access. Account caches/queued edits remain on that browser, keyed by account ID. Clear site data to remove those copies, after uploading pending changes. This is not encrypted local storage.
+- An already verified, open app can continue locally during an outage. Fresh login or browser reload needs an online account check. Disabling an account blocks cloud access, not copies already downloaded to a device.
+- The static frontend and existing media proxy are not made private by this change. Server-side checks protect account management and per-user cloud data.
+
+## Upgrading the earlier email-code prototype
+
+Keep the first migration if it is already applied; run only the second migration. Existing email-only users are not automatically promoted or converted, and their cloud rows are not deleted. Create the managed admin/users above and explicitly import local favorites/history as needed. Email templates and SMTP setup are no longer required by this app.
+
+## Verify after deployment
+
+1. Create `a` and `b`; sign into `a` on two devices and `b` in a separate browser profile.
+2. Add a favorite and pause a video as `a`. Sync both devices; confirm both changes appear for `a` and neither appears for `b`.
+3. Delete a favorite, then reconnect a previously offline device. Confirm the deletion stays deleted.
+4. Make an offline edit while the app remains open, reconnect and confirm it uploads.
+5. Reset `a`'s password; confirm old sessions cannot sync and the new password works on both devices.
+6. Disable `a`; confirm cloud access is blocked. Re-enable it and confirm fresh login is required.
+7. As `b`, call `/api/accounts` with its token and confirm HTTP 403. Direct reads of `a`'s sync rows must also be denied by RLS.
+
+Automated tests exercise authorization failures, admin operations, account transitions, offline queues and merge conflicts. Live Supabase policy enforcement and the two-device flow still need verification with your configured project.
+
+References: [Supabase admin user creation](https://supabase.com/docs/reference/javascript/auth-admin-createuser), [sessions](https://supabase.com/docs/guides/auth/sessions), [row-level security](https://supabase.com/docs/guides/database/postgres/row-level-security).

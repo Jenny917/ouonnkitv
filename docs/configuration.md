@@ -6,7 +6,7 @@ OuonnkiTV 支持通过环境变量预定义应用的默认配置。当用户点�
 
 ## 环境变量参考
 
-所有配置均使用 `OKI_` 前缀。Docker 镜像在容器启动时读取；Vercel、Cloudflare Pages、Netlify 在构建时读取；本地开发在 Vite 启动时读取。
+浏览器配置使用 `OKI_` 前缀，账号管理的服务端密钥除外。Docker 镜像在容器启动时读取；Vercel、Cloudflare Pages、Netlify 在构建时读取；本地开发在 Vite 启动时读取。账号管理 API 目前由 Vercel Functions 提供，详见[账号与同步配置](cloud-sync.md)。
 
 | 变量名                      | 必需 | 说明                                                                        |
 | --------------------------- | ---- | --------------------------------------------------------------------------- |
@@ -14,7 +14,9 @@ OuonnkiTV 支持通过环境变量预定义应用的默认配置。当用户点�
 | `OKI_TMDB_API_TOKEN`        | 否   | TMDB API Token，启用 [TMDB 智能模式](#-tmdb-配置建议启用)获取影片元数据     |
 | `OKI_TMDB_API_BASE_URL`     | 否   | TMDB API 基础地址（默认 `https://api.themoviedb.org/3`）                    |
 | `OKI_TMDB_IMAGE_BASE_URL`   | 否   | TMDB 图片基础地址（默认 `https://image.tmdb.org/t/p/`）                     |
-| `OKI_ACCESS_PASSWORD`       | 否   | 访问密码（留空则公开访问）                                                  |
+| `OKI_SUPABASE_URL` | 是 | Supabase 项目 URL |
+| `OKI_SUPABASE_PUBLISHABLE_KEY` / `OKI_SUPABASE_ANON_KEY` | 是 | Supabase 公开客户端密钥 |
+| `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_SECRET_KEY` | 管理账号时必需 | 仅 Vercel 服务端使用的机密密钥，不可添加公开前缀 |
 | `OKI_DISABLE_ANALYTICS`     | 否   | 设为 `true` 禁用 Vercel Analytics（Docker 等非 Vercel 部署建议设为 `true`） |
 | `OKI_INITIAL_CONFIG`        | 否   | 完整 JSON 配置（包含设置、视频源、订阅等导出数据）                          |
 
@@ -112,7 +114,7 @@ OKI_TMDB_IMAGE_BASE_URL=https://image.tmdb.org/t/p/
 > Token 从 [themoviedb.org](https://www.themoviedb.org/settings/api) 获取（需注册账户），详细申请步骤见 [TMDB API Key 申请指南](./tmdb-key.md)。
 > Base URL 优先级：设置页填写值 > 环境变量 > 官方默认值。留空表示不覆盖，自动回退。
 
-> 浏览器端应用必须读取这些值，因此 `OKI_TMDB_API_TOKEN`、`OKI_ACCESS_PASSWORD` 等变量会发送到浏览器，不能当作服务端机密。
+> 浏览器端应用必须读取这些值，因此 `OKI_TMDB_API_TOKEN` 等公开配置变量会发送到浏览器，不能当作服务端机密。旧 `OKI_ACCESS_PASSWORD` 已停用，请改用管理员创建的账号。
 
 ### TMDB 智能模式设置
 
