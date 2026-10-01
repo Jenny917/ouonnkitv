@@ -142,8 +142,9 @@ export async function syncNow() {
       if (run !== generation) return
       if (error) throw new Error(error.message)
       const rows = (data ?? []).map(row => recordSchema.parse(row))
-      if (rows.some(row => !validPayload(row)))
-        throw new Error('Cloud data is incompatible with this app version')
+      const invalid = rows.find(row => !validPayload(row))
+      if (invalid)
+        throw new Error(`Cloud data is incompatible: ${invalid.kind}/${invalid.item_key}`)
       journal = mergeRemote(journal, rows)
       save()
       if (rows.length < 500) break

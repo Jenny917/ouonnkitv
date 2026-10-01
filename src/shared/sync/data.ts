@@ -13,8 +13,8 @@ const favoriteBase = {
   updatedAt: z.number(),
   watchStatus: z.enum(['not_watched', 'watching', 'completed']),
   tags: z.array(z.string()),
-  notes: z.string().optional(),
-  rating: z.number().optional(),
+  notes: z.string().nullable().optional(),
+  rating: z.number().nullable().optional(),
 }
 const favoriteSchema = z.discriminatedUnion('sourceType', [
   z.object({
@@ -39,10 +39,10 @@ const favoriteSchema = z.discriminatedUnion('sourceType', [
       vodName: z.string(),
       sourceCode: z.string(),
       sourceName: z.string(),
-      vodPic: z.string().optional(),
-      typeName: z.string().optional(),
-      vodYear: z.string().optional(),
-      vodArea: z.string().optional(),
+      vodPic: z.string().nullable().optional(),
+      typeName: z.string().nullable().optional(),
+      vodYear: z.string().nullable().optional(),
+      vodArea: z.string().nullable().optional(),
     }),
   }),
 ])
@@ -51,12 +51,12 @@ const historySchema = z.object({
   title: z.string(),
   imageUrl: z.string(),
   episodeIndex: z.number().int(),
-  episodeName: z.string().optional(),
+  episodeName: z.string().nullable().optional(),
   sourceCode: z.string(),
   sourceName: z.string(),
   vodId: z.string(),
-  tmdbMediaType: z.enum(['movie', 'tv']).optional(),
-  tmdbId: z.number().optional(),
+  tmdbMediaType: z.enum(['movie', 'tv']).nullable().optional(),
+  tmdbId: z.number().nullable().optional(),
   tmdbSeasonNumber: z.number().nullable().optional(),
   timestamp: z.number(),
   playbackPosition: z.number().nonnegative(),
@@ -113,7 +113,14 @@ export function validPayload(row: SyncRecord): boolean {
   }
   if (row.kind === 'history') {
     const parsed = historySchema.safeParse(row.value)
-    return parsed.success && getHistoryItemKey(parsed.data) === row.item_key
+    if (!parsed.success) return false
+    const normalized = {
+      ...parsed.data,
+      episodeName: parsed.data.episodeName ?? undefined,
+      tmdbMediaType: parsed.data.tmdbMediaType ?? undefined,
+      tmdbId: parsed.data.tmdbId ?? undefined,
+    }
+    return getHistoryItemKey(normalized) === row.item_key
   }
   return preferenceSchemas[row.item_key]?.safeParse(row.value).success ?? false
 }
