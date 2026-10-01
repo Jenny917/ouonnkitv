@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { DEFAULT_SETTINGS } from '@/shared/config/settings.config'
+import { getPublicEnv } from '@/shared/config/runtimeEnv'
 
 interface NetworkSettings {
   defaultTimeout: number
@@ -103,7 +104,11 @@ export const useSettingStore = create<SettingStore>()(
           set(state => {
             const merged = { ...state.system, ...settings }
             // 清空 token 且无环境变量 token 时，自动关闭 tmdbEnabled
-            if ('tmdbApiToken' in settings && !settings.tmdbApiToken && !import.meta.env.OKI_TMDB_API_TOKEN) {
+            if (
+              'tmdbApiToken' in settings &&
+              !settings.tmdbApiToken &&
+              !getPublicEnv('OKI_TMDB_API_TOKEN')
+            ) {
               merged.tmdbEnabled = false
             }
             state.system = merged
@@ -121,7 +126,7 @@ export const useSettingStore = create<SettingStore>()(
       })),
       {
         name: 'ouonnki-tv-setting-store',
-        version: 13,
+        version: 14,
         migrate: (persistedState: unknown, version: number) => {
           const state = persistedState as Record<string, unknown>
           if (version < 2 && state.playback) {
@@ -190,7 +195,8 @@ export const useSettingStore = create<SettingStore>()(
           }
           if (version < 11) {
             const system = (state.system ?? {}) as Record<string, unknown>
-            system.isScrollChromeAnimationEnabled ??= DEFAULT_SETTINGS.system.isScrollChromeAnimationEnabled
+            system.isScrollChromeAnimationEnabled ??=
+              DEFAULT_SETTINGS.system.isScrollChromeAnimationEnabled
             state.system = system
           }
           if (version < 12) {
@@ -200,8 +206,16 @@ export const useSettingStore = create<SettingStore>()(
           }
           if (version < 13) {
             const playback = (state.playback ?? {}) as Record<string, unknown>
-            playback.isFullscreenProgressHidden ??= DEFAULT_SETTINGS.playback.isFullscreenProgressHidden
+            playback.isFullscreenProgressHidden ??=
+              DEFAULT_SETTINGS.playback.isFullscreenProgressHidden
             state.playback = playback
+          }
+          if (version < 14) {
+            const system = (state.system ?? {}) as Record<string, unknown>
+            if (!system.tmdbApiToken && DEFAULT_SETTINGS.system.tmdbApiToken) {
+              system.tmdbApiToken = DEFAULT_SETTINGS.system.tmdbApiToken
+            }
+            state.system = system
           }
           return state
         },

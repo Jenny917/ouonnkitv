@@ -1,4 +1,5 @@
 import { INITIAL_CONFIG } from './initialConfig'
+import { getPublicEnv } from './runtimeEnv'
 
 const envSettings = INITIAL_CONFIG?.settings
 const DEFAULT_TMDB_API_BASE_URL = 'https://api.themoviedb.org/3'
@@ -35,15 +36,17 @@ export const DEFAULT_SETTINGS = {
     isFullscreenProgressHidden: envSettings?.playback?.isFullscreenProgressHidden ?? false,
   },
   system: {
-    tmdbEnabled: envSettings?.system?.tmdbEnabled ?? Boolean(import.meta.env.OKI_TMDB_API_TOKEN),
-    tmdbApiToken: '',
+    tmdbEnabled:
+      envSettings?.system?.tmdbEnabled ??
+      Boolean(envSettings?.system?.tmdbApiToken || getPublicEnv('OKI_TMDB_API_TOKEN')),
+    tmdbApiToken: envSettings?.system?.tmdbApiToken ?? '',
     tmdbApiBaseUrl:
       envSettings?.system?.tmdbApiBaseUrl ??
-      import.meta.env.OKI_TMDB_API_BASE_URL ??
+      getPublicEnv('OKI_TMDB_API_BASE_URL') ??
       DEFAULT_TMDB_API_BASE_URL,
     tmdbImageBaseUrl:
       envSettings?.system?.tmdbImageBaseUrl ??
-      import.meta.env.OKI_TMDB_IMAGE_BASE_URL ??
+      getPublicEnv('OKI_TMDB_IMAGE_BASE_URL') ??
       DEFAULT_TMDB_IMAGE_BASE_URL,
     isUpdateLogEnabled: envSettings?.system?.isUpdateLogEnabled ?? false,
     isScrollChromeAnimationEnabled: envSettings?.system?.isScrollChromeAnimationEnabled ?? false,

@@ -7,6 +7,7 @@ import { Spinner } from '@/shared/components/ui/spinner'
 import { useAuthStore } from '@/shared/store/authStore'
 import { OkiLogo } from '@/shared/components/icons'
 import { toast } from 'sonner'
+import { getPublicEnv } from '@/shared/config/runtimeEnv'
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -24,7 +25,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const revealOriginRef = useRef('50% 50%')
 
-  const accessPassword = import.meta.env.OKI_ACCESS_PASSWORD
+  const accessPassword = getPublicEnv('OKI_ACCESS_PASSWORD')
   const isProtectionEnabled = !!accessPassword && accessPassword.trim() !== ''
 
   useEffect(() => {
@@ -47,10 +48,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     if (reveal) {
       const origin = revealOriginRef.current
       const animation = reveal.animate(
-        [
-          { clipPath: `circle(0% at ${origin})` },
-          { clipPath: `circle(150% at ${origin})` },
-        ],
+        [{ clipPath: `circle(0% at ${origin})` }, { clipPath: `circle(150% at ${origin})` }],
         {
           duration: 600,
           easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
@@ -111,19 +109,17 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       )}
 
       {/* 守卫层 */}
-      <div
-        className="fixed inset-0 z-[9999] flex flex-col bg-background md:flex-row"
-      >
+      <div className="bg-background fixed inset-0 z-[9999] flex flex-col md:flex-row">
         {/* 左侧品牌区 — 移动端顶部横栏，桌面端左侧半屏 */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, ease: easeOutQuad }}
-          className="relative flex shrink-0 flex-col items-center justify-center overflow-hidden bg-muted/40 px-8 py-12 md:w-1/2 md:py-0"
+          className="bg-muted/40 relative flex shrink-0 flex-col items-center justify-center overflow-hidden px-8 py-12 md:w-1/2 md:py-0"
         >
           {/* 装饰性模糊光晕 */}
-          <div className="pointer-events-none absolute -top-20 -left-20 size-72 rounded-full bg-primary/10 blur-3xl" />
-          <div className="pointer-events-none absolute -right-16 -bottom-16 size-56 rounded-full bg-primary/5 blur-3xl" />
+          <div className="bg-primary/10 pointer-events-none absolute -top-20 -left-20 size-72 rounded-full blur-3xl" />
+          <div className="bg-primary/5 pointer-events-none absolute -right-16 -bottom-16 size-56 rounded-full blur-3xl" />
 
           <div className="relative flex flex-col items-center gap-4">
             <motion.div
@@ -140,7 +136,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5, delay: 0.25, ease: easeOutQuad }}
-              className="max-w-xs text-center text-sm text-muted-foreground"
+              className="text-muted-foreground max-w-xs text-center text-sm"
             >
               你的私人流媒体影院
             </motion.p>
@@ -157,12 +153,12 @@ export default function AuthGuard({ children }: AuthGuardProps) {
               transition={{ duration: 0.5, delay: 0.15, ease: easeOutQuad }}
               className="space-y-4"
             >
-              <div className="flex size-12 items-center justify-center rounded-xl bg-muted/70 ring-1 ring-border/60">
-                <Lock className="size-5 text-muted-foreground" />
+              <div className="bg-muted/70 ring-border/60 flex size-12 items-center justify-center rounded-xl ring-1">
+                <Lock className="text-muted-foreground size-5" />
               </div>
               <div>
                 <h1 className="text-2xl font-semibold">访问受限</h1>
-                <p className="mt-1.5 text-sm text-muted-foreground">
+                <p className="text-muted-foreground mt-1.5 text-sm">
                   当前站点通过密码保护，请输入访问密码以继续
                 </p>
               </div>

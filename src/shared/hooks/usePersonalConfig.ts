@@ -1,9 +1,6 @@
 import { useSettingStore } from '@/shared/store/settingStore'
 import { useApiStore } from '@/shared/store/apiStore'
-import {
-  useSubscriptionStore,
-  isSubscriptionSource,
-} from '@/shared/store/subscriptionStore'
+import { useSubscriptionStore, isSubscriptionSource } from '@/shared/store/subscriptionStore'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import { z } from 'zod'
@@ -72,6 +69,8 @@ const personalConfigSchema = z.object({
       .optional(),
     system: z
       .object({
+        tmdbEnabled: z.boolean().optional(),
+        tmdbApiToken: z.string().optional(),
         isUpdateLogEnabled: z.boolean().optional(),
         isScrollChromeAnimationEnabled: z.boolean().optional(),
         tmdbApiBaseUrl: z.string().optional(),
@@ -183,21 +182,9 @@ export const usePersonalConfig = () => {
     // 恢复视频源（importVideoAPIs 内部会为缺少 id 的源生成 UUID）
     apiStore.importVideoAPIs(config.videoSources as Parameters<typeof apiStore.importVideoAPIs>[0])
 
-    // 恢复订阅：清空现有订阅后逐一重建（addSubscription 会自动拉取最新数据）
-    if (config.subscriptions && config.subscriptions.length > 0) {
-      const subscriptionStore = useSubscriptionStore.getState()
-      // 清空现有订阅
-      for (const existing of subscriptionStore.subscriptions) {
-        subscriptionStore.removeSubscription(existing.id)
-      }
-      // 逐一添加导入的订阅
-      for (const sub of config.subscriptions) {
-        await subscriptionStore.addSubscription(
-          sub.url,
-          sub.name,
-          sub.refreshInterval ?? 60,
-        )
-      }
+    // 恢复订阅。显式空数组也会清空现有订阅。
+    if (config.subscriptions) {
+      await useSubscriptionStore.getState().replaceSubscriptions(config.subscriptions)
     }
 
     toast.success('配置导入成功')
@@ -262,11 +249,9 @@ export const usePersonalConfig = () => {
     try {
       settingStore.resetSettings()
       await apiStore.resetVideoSources()
-      // 清空所有订阅
       const subscriptionStore = useSubscriptionStore.getState()
-      for (const sub of [...subscriptionStore.subscriptions]) {
-        subscriptionStore.removeSubscription(sub.id)
-      }
+      subscriptionStore.clearSubscriptions()
+      await subscriptionStore.initializeEnvSubscriptions()
       toast.success('已恢复默认配置')
     } catch (error) {
       console.error('Restore default error:', error)

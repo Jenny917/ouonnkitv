@@ -3,6 +3,7 @@ import { Api } from 'tmdb-ts/dist/api.js'
 import { parseOptions } from 'tmdb-ts/dist/utils/parseOptions.js'
 import { useSettingStore } from '@/shared/store/settingStore'
 import type { TmdbMediaItem, TmdbMediaType } from '../types/tmdb'
+import { getPublicEnv } from '@/shared/config/runtimeEnv'
 
 export const DEFAULT_TMDB_API_BASE_URL = 'https://api.themoviedb.org/3'
 export const DEFAULT_TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/'
@@ -83,7 +84,7 @@ export function resolveTmdbApiBaseUrl(): string {
   const settingsValue = useSettingStore.getState().system.tmdbApiBaseUrl
   return (
     normalizeApiBaseUrlCandidate(settingsValue) ??
-    normalizeApiBaseUrlCandidate(import.meta.env.OKI_TMDB_API_BASE_URL) ??
+    normalizeApiBaseUrlCandidate(getPublicEnv('OKI_TMDB_API_BASE_URL')) ??
     DEFAULT_TMDB_API_BASE_URL
   )
 }
@@ -92,7 +93,7 @@ export function resolveTmdbImageBaseUrl(): string {
   const settingsValue = useSettingStore.getState().system.tmdbImageBaseUrl
   return (
     normalizeImageBaseUrlCandidate(settingsValue) ??
-    normalizeImageBaseUrlCandidate(import.meta.env.OKI_TMDB_IMAGE_BASE_URL) ??
+    normalizeImageBaseUrlCandidate(getPublicEnv('OKI_TMDB_IMAGE_BASE_URL')) ??
     DEFAULT_TMDB_IMAGE_BASE_URL
   )
 }
@@ -100,7 +101,10 @@ export function resolveTmdbImageBaseUrl(): string {
 function ensureTmdbApiPatched(): void {
   if (tmdbApiPatched) return
 
-  Api.prototype.get = async function <T>(path: string, options?: Record<string, unknown>): Promise<T> {
+  Api.prototype.get = async function <T>(
+    path: string,
+    options?: Record<string, unknown>,
+  ): Promise<T> {
     const params = parseOptions(options)
     const query = params ? `?${params}` : ''
     const requestUrl = `${resolveTmdbApiBaseUrl()}${path}${query}`
@@ -130,7 +134,7 @@ function ensureTmdbApiPatched(): void {
 function resolveTmdbToken(): string | undefined {
   const userToken = useSettingStore.getState().system.tmdbApiToken
   if (userToken) return userToken
-  const envToken = import.meta.env.OKI_TMDB_API_TOKEN
+  const envToken = getPublicEnv('OKI_TMDB_API_TOKEN')
   if (envToken) return envToken
   return undefined
 }

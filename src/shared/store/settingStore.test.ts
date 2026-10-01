@@ -3,6 +3,22 @@ import { DEFAULT_SETTINGS } from '@/shared/config/settings.config'
 import { useSettingStore } from './settingStore'
 
 describe('settingStore migrate', () => {
+  it('v13 -> v14 会从初始配置补齐空的 tmdbApiToken', async () => {
+    const migrate = useSettingStore.persist.getOptions().migrate
+    const legacyState = {
+      network: DEFAULT_SETTINGS.network,
+      search: DEFAULT_SETTINGS.search,
+      playback: DEFAULT_SETTINGS.playback,
+      system: { ...DEFAULT_SETTINGS.system, tmdbApiToken: '' },
+    }
+
+    const migrated = (await Promise.resolve(migrate?.(legacyState, 13))) as {
+      system: { tmdbApiToken: string }
+    }
+
+    expect(migrated.system.tmdbApiToken).toBe(DEFAULT_SETTINGS.system.tmdbApiToken)
+  })
+
   it('v5 -> v6 会补齐 tmdbMatchCacheTTLHours 默认值', async () => {
     const migrate = useSettingStore.persist.getOptions().migrate
 
@@ -192,7 +208,9 @@ describe('settingStore migrate', () => {
       playback: { longPressPlaybackRate?: number }
     }
 
-    expect(migrated.playback.longPressPlaybackRate).toBe(DEFAULT_SETTINGS.playback.longPressPlaybackRate)
+    expect(migrated.playback.longPressPlaybackRate).toBe(
+      DEFAULT_SETTINGS.playback.longPressPlaybackRate,
+    )
   })
 
   it('已有 longPressPlaybackRate 时不覆盖', async () => {

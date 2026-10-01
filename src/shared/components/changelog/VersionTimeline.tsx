@@ -3,16 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib'
 import { useIsMobile } from '@/shared/hooks/use-mobile'
+import type { VersionUpdate } from '@/shared/store/versionStore'
 import { VersionDetail } from './VersionDetail'
-
-interface VersionUpdate {
-  version: string
-  title: string
-  date: string
-  features: string[]
-  fixes?: string[]
-  breaking?: string[]
-}
 
 interface VersionTimelineProps {
   versions: VersionUpdate[]

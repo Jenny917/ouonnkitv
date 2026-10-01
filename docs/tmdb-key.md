@@ -15,6 +15,7 @@ OuonnkiTV 的 TMDB 智能模式需要一个 TMDB API Token 来获取影片元数
 登录后访问 [API 设置页面](https://www.themoviedb.org/settings/api)。
 
 如果是首次申请，需要先同意使用条款并填写基本信息：
+
 - **应用类型**：选择 Personal
 - **应用名称**：填写任意名称（如 OuonnkiTV）
 - **应用网址**：填写你的部署地址或 `https://localhost`
@@ -24,9 +25,9 @@ OuonnkiTV 的 TMDB 智能模式需要一个 TMDB API Token 来获取影片元数
 
 申请通过后，在 API 设置页面可以看到两个值：
 
-| 类型 | 说明 |
-| ---- | ---- |
-| API Key (v3 auth) | 32 位字符串，**不是我们需要的** |
+| 类型                            | 说明                                  |
+| ------------------------------- | ------------------------------------- |
+| API Key (v3 auth)               | 32 位字符串，**不是我们需要的**       |
 | API Read Access Token (v4 auth) | 以 `eyJ` 开头的长字符串，**使用这个** |
 
 复制 **API Read Access Token**（v4 auth），这就是 OuonnkiTV 需要的 Token。
@@ -39,7 +40,7 @@ OuonnkiTV 的 TMDB 智能模式需要一个 TMDB API Token 来获取影片元数
 
 ### 方式一：环境变量（部署时配置）
 
-将 Token 设置为构建时环境变量：
+将 Token 设置为 `OKI_TMDB_API_TOKEN` 环境变量：
 
 ```env
 OKI_TMDB_API_TOKEN=eyJhbGciOi...（你的 Token）
@@ -47,7 +48,7 @@ OKI_TMDB_API_TOKEN=eyJhbGciOi...（你的 Token）
 
 配置后应用默认启用 TMDB 智能模式。
 
-> 详细的环境变量配置方法请参考 [配置管理](./configuration.md)。
+Docker 镜像在容器启动时读取该变量；Vercel、Cloudflare Pages、Netlify 在构建时读取。详细配置及生效方式请参考 [配置管理](./configuration.md) 和 [部署指南](./deployment.md)。
 
 ### 方式二：应用内手动输入
 

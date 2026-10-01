@@ -2,13 +2,19 @@ import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
-interface VersionUpdate {
+export interface VersionLink {
+  label: string
+  href: string
+}
+
+export interface VersionUpdate {
   version: string
   title: string
   date: string
   features: string[]
   fixes?: string[]
   breaking?: string[]
+  links?: VersionLink[]
 }
 
 interface VersionState {
@@ -50,6 +56,29 @@ const formatDate = (dateStr: string) => {
 
 // 版本更新历史
 const VERSION_UPDATES: VersionUpdate[] = [
+  {
+    version: '2.0.5',
+    title: '部署配置与初始化体验修复',
+    date: formatDate('2026-08-14'),
+    features: [
+      'Docker 预构建镜像支持在容器启动时读取全部 OKI_* 环境变量，无需为配置重新构建镜像。',
+      '统一各部署方式的环境变量配置入口，并补充 Docker、Vercel、Cloudflare Pages、Netlify 与本地开发文档。',
+    ],
+    fixes: ['修复 OKI_INITIAL_CONFIG 中 Token、远程视频源、订阅和广告过滤等配置未完整生效的问题。'],
+    breaking: [
+      'Docker Compose 用户需将 OKI_* 从 build.args 迁移到 environment；Vercel、Cloudflare Pages 和 Netlify 无需调整。',
+    ],
+    links: [
+      {
+        label: '查看部署指南',
+        href: 'https://github.com/Ouonnki/OuonnkiTV/blob/main/docs/deployment.md',
+      },
+      {
+        label: '查看配置说明',
+        href: 'https://github.com/Ouonnki/OuonnkiTV/blob/main/docs/configuration.md',
+      },
+    ],
+  },
   {
     version: '2.0.4',
     title: '播放页右侧面板滚动体验优化',

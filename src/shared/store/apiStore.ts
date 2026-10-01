@@ -15,6 +15,7 @@ import { getInitialVideoSources } from '@/shared/config/api.config'
 import { DEFAULT_SETTINGS } from '@/shared/config/settings.config'
 import { v4 as uuidv4 } from 'uuid'
 import { useSettingStore } from './settingStore'
+import { INITIAL_CONFIG } from '@/shared/config/initialConfig'
 
 // 保持向后兼容的类型别名
 export type VideoApi = VideoSource
@@ -147,8 +148,10 @@ export const useApiStore = create<ApiStore>()(
 
         initializeEnvSources: async () => {
           const envSources = await getInitialVideoSources()
-          console.log(envSources)
           set(state => {
+            if (typeof INITIAL_CONFIG?.adFilteringEnabled === 'boolean') {
+              state.adFilteringEnabled = INITIAL_CONFIG.adFilteringEnabled
+            }
             if (envSources.length > 0) {
               const store = toSourceStore(state)
               const { store: newStore } = importSources(store, envSources, {
@@ -186,6 +189,7 @@ export const useApiStore = create<ApiStore>()(
         resetVideoSources: async () => {
           set(state => {
             state.videoAPIs = []
+            state.adFilteringEnabled = INITIAL_CONFIG?.adFilteringEnabled ?? true
           })
           await get().initializeEnvSources()
         },

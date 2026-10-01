@@ -45,76 +45,82 @@ export const buildProxyRequestUrl = (targetUrl: string, proxyUrl?: string | null
 }
 
 import type { VideoApi } from '@/shared/types/video'
-import { INITIAL_CONFIG } from './initialConfig'
+import { INITIAL_CONFIG, type VideoSourceConfig } from './initialConfig'
 import { DEFAULT_SETTINGS } from './settings.config'
+import { getPublicEnv } from './runtimeEnv'
 
-// 从环境变量获取初始视频源
-export const getInitialVideoSources = async (): Promise<VideoApi[]> => {
-  // 1. First priority: Full JSON config from OKI_INITIAL_CONFIG
-  // 1. First priority: Full JSON config from OKI_INITIAL_CONFIG
-  if (INITIAL_CONFIG?.videoSources && Array.isArray(INITIAL_CONFIG.videoSources)) {
-    return parseVideoSources(INITIAL_CONFIG.videoSources)
-  }
+type VideoSourceInput = VideoSourceConfig[] | string | undefined
 
-  // 2. Second priority: Specific OKI_INITIAL_VIDEO_SOURCES
-  let envSources = import.meta.env.OKI_INITIAL_VIDEO_SOURCES
-
-  // 验证url
-  try {
-    new URL(envSources.trim())
-    const response = await fetch(buildProxyRequestUrl(envSources.trim()))
-    if (!response.ok) {
-      console.error(`无法获取视频源，HTTP状态: ${response.status}`)
-      return []
-    }
-    envSources = await response.text()
-  } catch {
-    // 不是URL，继续处理
-  }
-
-  if (!envSources || typeof envSources !== 'string') {
-    return []
-  }
-
-  try {
-    // 清理多行JSON：移除不必要的换行符和空白字符，但保留JSON结构内的空格
-    const cleanedSources = envSources
-      .replace(/^\s*['"`]/, '') // 移除开头的引号
-      .replace(/['"`]\s*$/, '') // 移除结尾的引号
-      .trim()
-
-    // 解析 JSON 格式
-    const jsonSources = JSON.parse(cleanedSources)
-    const sources = Array.isArray(jsonSources) ? jsonSources : [jsonSources]
-
-    return parseVideoSources(sources)
-  } catch (error) {
-    console.error('解析环境变量中的视频源失败:', error)
-    console.error('环境变量内容:', envSources)
-    return []
-  }
-}
-
-// Helper to parse and validate video sources
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const parseVideoSources = (sources: any[]): VideoApi[] => {
+export const parseVideoSources = (sources: VideoSourceConfig[]): VideoApi[] => {
   return sources
     .map((source, index) => {
-      if (!source.name || !source.url) {
+      if (!source || typeof source !== 'object' || !source.name || !source.url) {
         console.warn(`跳过无效的视频源配置: ${JSON.stringify(source)}`)
         return null
       }
 
       return {
-        id: (source.id as string) || `env_source_${index}`,
-        name: source.name as string,
-        url: source.url as string,
-        detailUrl: (source.detailUrl as string) || source.url,
-        isEnabled: source.isEnabled !== undefined ? (source.isEnabled as boolean) : true,
+        id: source.id || `env_source_${index}`,
+        name: source.name,
+        url: source.url,
+        detailUrl: source.detailUrl || source.url,
+        isEnabled: source.isEnabled ?? true,
         updatedAt: source.updatedAt ? new Date(source.updatedAt) : new Date(),
-        timeout: (source.timeout as number) || DEFAULT_SETTINGS.network.defaultTimeout,
-        retry: (source.retry as number) || DEFAULT_SETTINGS.network.defaultRetry,
+        timeout: source.timeout ?? DEFAULT_SETTINGS.network.defaultTimeout,
+        retry: source.retry ?? DEFAULT_SETTINGS.network.defaultRetry,
       } as VideoApi
     })
     .filter((source): source is VideoApi => source !== null)
+}
+
+export const loadVideoSources = async (input: VideoSourceInput): Promise<VideoApi[]> => {
+  if (Array.isArray(input)) return parseVideoSources(input)
+  if (!input || typeof input !== 'string') return []
+
+  let sourceText = input.trim()
+  if (!sourceText) return []
+
+  let remoteUrl: URL | null = null
+  try {
+    remoteUrl = new URL(sourceText)
+  } catch {
+    // 不是 URL，按内联 JSON 继续处理
+  }
+
+  if (remoteUrl) {
+    try {
+      const response = await fetch(buildProxyRequestUrl(remoteUrl.toString()))
+      if (!response.ok) {
+        console.error(`无法获取视频源，HTTP状态: ${response.status}`)
+        return []
+      }
+      sourceText = await response.text()
+    } catch (error) {
+      console.error('获取远程视频源失败:', error)
+      return []
+    }
+  }
+
+  try {
+    const cleanedSources = sourceText
+      .replace(/^\s*['"`]/, '') // 移除开头的引号
+      .replace(/['"`]\s*$/, '') // 移除结尾的引号
+      .trim()
+
+    const jsonSources: unknown = JSON.parse(cleanedSources)
+    const sources = Array.isArray(jsonSources) ? jsonSources : [jsonSources]
+
+    return parseVideoSources(sources as VideoSourceConfig[])
+  } catch (error) {
+    console.error('解析环境变量中的视频源失败:', error)
+    return []
+  }
+}
+
+// 从环境变量获取初始视频源。完整配置优先于独立视频源变量。
+export const getInitialVideoSources = async (): Promise<VideoApi[]> => {
+  if (INITIAL_CONFIG && INITIAL_CONFIG.videoSources !== undefined) {
+    return loadVideoSources(INITIAL_CONFIG.videoSources)
+  }
+  return loadVideoSources(getPublicEnv('OKI_INITIAL_VIDEO_SOURCES'))
 }

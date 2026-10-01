@@ -6,13 +6,6 @@ FROM node:20-alpine AS builder
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION
-ARG OKI_INITIAL_VIDEO_SOURCES
-ARG OKI_TMDB_API_TOKEN
-ARG OKI_TMDB_API_BASE_URL
-ARG OKI_TMDB_IMAGE_BASE_URL
-ARG OKI_ACCESS_PASSWORD
-ARG OKI_DISABLE_ANALYTICS
-ARG OKI_INITIAL_CONFIG
 
 # 设置工作目录
 WORKDIR /app
@@ -31,15 +24,6 @@ RUN pnpm install --frozen-lockfile
 
 # 复制源代码
 COPY . .
-
-# 设置构建时环境变量（Vite 在构建时将这些值内联到前端代码）
-ENV OKI_INITIAL_VIDEO_SOURCES=${OKI_INITIAL_VIDEO_SOURCES}
-ENV OKI_TMDB_API_TOKEN=${OKI_TMDB_API_TOKEN}
-ENV OKI_TMDB_API_BASE_URL=${OKI_TMDB_API_BASE_URL}
-ENV OKI_TMDB_IMAGE_BASE_URL=${OKI_TMDB_IMAGE_BASE_URL}
-ENV OKI_ACCESS_PASSWORD=${OKI_ACCESS_PASSWORD}
-ENV OKI_DISABLE_ANALYTICS=${OKI_DISABLE_ANALYTICS:-true}
-ENV OKI_INITIAL_CONFIG=${OKI_INITIAL_CONFIG}
 
 # 构建应用
 RUN pnpm build
@@ -60,6 +44,9 @@ LABEL org.opencontainers.image.created=${BUILD_DATE}
 LABEL org.opencontainers.image.revision=${VCS_REF}
 LABEL org.opencontainers.image.source="https://github.com/Ouonnki/OuonnkiTV"
 
+# 自托管默认禁用分析；docker run/compose 可显式设为 false 覆盖
+ENV OKI_DISABLE_ANALYTICS=true
+
 # 安装 nginx 和 supervisor，并清理缓存
 RUN apk add --no-cache nginx supervisor && \
     rm -rf /var/cache/apk/*
@@ -73,6 +60,8 @@ WORKDIR /app
 # 复制代理服务器文件和共享模块
 COPY proxy-server.js ./
 COPY shared/ ./shared/
+COPY scripts/generate-runtime-config.mjs ./scripts/generate-runtime-config.mjs
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # 创建最小 package.json 确保 Node.js 以 ESM 模式解析 .js 文件
 RUN echo '{"type":"module"}' > package.json
@@ -88,8 +77,10 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
 
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # 暴露端口
 EXPOSE 80
 
-# 使用 supervisor 启动 nginx 和代理服务器
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+# 容器启动时生成前端运行时配置，再启动 nginx 和代理服务器
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

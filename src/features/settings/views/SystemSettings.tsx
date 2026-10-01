@@ -13,16 +13,18 @@ import {
 } from '@/shared/components/ui/select'
 import { Cog, Image, KeyRound, Link2 } from 'lucide-react'
 import { SettingsItem, SettingsPageShell, SettingsSection } from '../components/common'
+import { getPublicEnv } from '@/shared/config/runtimeEnv'
 
 export default function SystemSettings() {
   const { system, setSystemSettings } = useSettingStore()
 
-  const hasEnvToken = Boolean(import.meta.env.OKI_TMDB_API_TOKEN)
+  const hasEnvToken = Boolean(getPublicEnv('OKI_TMDB_API_TOKEN'))
   const hasUserToken = Boolean(system.tmdbApiToken)
   const hasTmdbToken = hasEnvToken || hasUserToken
-  const tmdbApiBaseUrlPlaceholder = import.meta.env.OKI_TMDB_API_BASE_URL || 'https://api.themoviedb.org/3'
+  const tmdbApiBaseUrlPlaceholder =
+    getPublicEnv('OKI_TMDB_API_BASE_URL') || 'https://api.themoviedb.org/3'
   const tmdbImageBaseUrlPlaceholder =
-    import.meta.env.OKI_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p/'
+    getPublicEnv('OKI_TMDB_IMAGE_BASE_URL') || 'https://image.tmdb.org/t/p/'
 
   return (
     <SettingsPageShell
@@ -65,7 +67,9 @@ export default function SystemSettings() {
           control={
             <Switch
               checked={system.isScrollChromeAnimationEnabled}
-              onCheckedChange={checked => setSystemSettings({ isScrollChromeAnimationEnabled: checked })}
+              onCheckedChange={checked =>
+                setSystemSettings({ isScrollChromeAnimationEnabled: checked })
+              }
             />
           }
         />

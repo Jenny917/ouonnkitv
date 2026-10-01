@@ -12,6 +12,7 @@ import { TooltipProvider } from '@/shared/components/ui/tooltip'
 
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
+import { getPublicEnv } from '@/shared/config/runtimeEnv'
 
 const root = document.getElementById('root')!
 
@@ -20,7 +21,7 @@ const app = (
     <TooltipProvider>
       <AppRouter />
       <Toaster richColors position="top-center" />
-      {import.meta.env.OKI_DISABLE_ANALYTICS !== 'true' && (
+      {getPublicEnv('OKI_DISABLE_ANALYTICS') !== 'true' && (
         <>
           <Analytics />
           <SpeedInsights />

@@ -1,4 +1,5 @@
 import { track } from '@vercel/analytics'
+import { getPublicEnv } from './runtimeEnv'
 
 // Vercel Analytics 配置
 export const analyticsConfig = {
@@ -22,7 +23,7 @@ export const trackEvent = (
   properties?: Record<string, string | number | boolean | null>,
 ) => {
   // 当禁用Analytics时不执行跟踪
-  if (import.meta.env.OKI_DISABLE_ANALYTICS !== 'true') {
+  if (getPublicEnv('OKI_DISABLE_ANALYTICS') !== 'true') {
     track(eventName, properties)
   }
 }

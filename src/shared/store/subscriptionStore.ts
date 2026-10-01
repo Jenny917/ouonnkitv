@@ -7,6 +7,7 @@ import type { VideoSource } from '@ouonnki/cms-core'
 import type { VideoSourceSubscription } from '@/shared/types/subscription'
 import { useApiStore } from './apiStore'
 import { useSettingStore } from './settingStore'
+import { INITIAL_CONFIG, type SubscriptionConfig } from '@/shared/config/initialConfig'
 
 // ==================== 工具函数 ====================
 
@@ -81,6 +82,12 @@ interface SubscriptionActions {
   setRefreshInterval: (subscriptionId: string, intervalMinutes: number) => void
   /** 判断 URL 是否已被订阅 */
   isUrlSubscribed: (url: string) => boolean
+  /** 从 OKI_INITIAL_CONFIG 恢复并拉取订阅 */
+  initializeEnvSubscriptions: () => Promise<void>
+  /** 用指定订阅替换现有订阅并拉取 */
+  replaceSubscriptions: (subscriptions: SubscriptionConfig[]) => Promise<void>
+  /** 清空订阅及其视频源 */
+  clearSubscriptions: () => void
 }
 
 type SubscriptionStore = SubscriptionState & SubscriptionActions
@@ -91,11 +98,7 @@ export const useSubscriptionStore = create<SubscriptionStore>()(
       immer<SubscriptionStore>((set, get) => ({
         subscriptions: [],
 
-        addSubscription: async (
-          url: string,
-          name?: string,
-          refreshInterval?: number,
-        ) => {
+        addSubscription: async (url: string, name?: string, refreshInterval?: number) => {
           if (get().isUrlSubscribed(url)) {
             toast.error('该 URL 已存在订阅')
             return
@@ -186,9 +189,7 @@ export const useSubscriptionStore = create<SubscriptionStore>()(
           const { subscriptions } = get()
           if (subscriptions.length === 0) return
 
-          await Promise.allSettled(
-            subscriptions.map(sub => get().refreshSubscription(sub.id)),
-          )
+          await Promise.allSettled(subscriptions.map(sub => get().refreshSubscription(sub.id)))
         },
 
         setRefreshInterval: (subscriptionId: string, intervalMinutes: number) => {
@@ -202,6 +203,50 @@ export const useSubscriptionStore = create<SubscriptionStore>()(
 
         isUrlSubscribed: (url: string) => {
           return get().subscriptions.some(s => s.url === url)
+        },
+
+        replaceSubscriptions: async subscriptions => {
+          get().clearSubscriptions()
+
+          const normalizedSubscriptions: VideoSourceSubscription[] = subscriptions.map(sub => ({
+            id: sub.id || uuidv4(),
+            name:
+              sub.name ||
+              (() => {
+                try {
+                  return new URL(sub.url).hostname
+                } catch {
+                  return '未命名订阅'
+                }
+              })(),
+            url: sub.url,
+            sourceCount: sub.sourceCount ?? 0,
+            lastRefreshedAt: sub.lastRefreshedAt ? new Date(sub.lastRefreshedAt) : null,
+            lastRefreshSuccess: sub.lastRefreshSuccess ?? false,
+            lastRefreshError: sub.lastRefreshError ?? null,
+            refreshInterval: sub.refreshInterval ?? 60,
+            createdAt: sub.createdAt ? new Date(sub.createdAt) : new Date(),
+          }))
+
+          set(state => {
+            state.subscriptions = normalizedSubscriptions
+          })
+
+          await get().refreshAllSubscriptions()
+        },
+
+        initializeEnvSubscriptions: async () => {
+          if (!INITIAL_CONFIG?.subscriptions) return
+          await get().replaceSubscriptions(INITIAL_CONFIG.subscriptions)
+        },
+
+        clearSubscriptions: () => {
+          for (const subscription of get().subscriptions) {
+            useApiStore.getState().removeSubscriptionSources(subscription.id)
+          }
+          set(state => {
+            state.subscriptions = []
+          })
         },
       })),
       {
