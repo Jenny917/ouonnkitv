@@ -4,6 +4,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/account-password",
+      "destination": "/api/account-password"
+    },
+    {
       "source": "/api/accounts",
       "destination": "/api/accounts"
     },

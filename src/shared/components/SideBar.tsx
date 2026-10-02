@@ -14,7 +14,7 @@ import {
 } from '@/shared/components/ui/sidebar'
 import { NavLink } from 'react-router'
 import { motion } from 'framer-motion'
-import { Home, Search, Star, History, Settings } from 'lucide-react'
+import { Home, Search, Star, History, Settings, UserRound } from 'lucide-react'
 import { OkiLogo } from '@/shared/components/icons'
 import { useVersionStore } from '../store'
 import { useAuthStore } from '@/shared/store/authStore'
@@ -147,6 +147,18 @@ export default function SideBar({
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={location.pathname === '/account'}
+              tooltip="我的账号"
+            >
+              <NavLink to="/account" onClick={handleNavLinkClick}>
+                <UserRound />
+                <span>我的账号</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           {items.footer.map(item => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton asChild>

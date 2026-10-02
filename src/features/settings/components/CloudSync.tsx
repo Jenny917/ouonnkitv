@@ -6,7 +6,7 @@ import { useAuthStore } from '@/shared/store/authStore'
 import { SettingsSection } from './common'
 import AccountAdmin from './AccountAdmin'
 
-export default function CloudSync() {
+export default function CloudSync({ showAdmin = true }: { showAdmin?: boolean }) {
   const state = useSyncStatus()
   const { account, logout, error } = useAuthStore()
   const [busy, setBusy] = useState(false)
@@ -25,7 +25,7 @@ export default function CloudSync() {
           </p>
           <p className="text-muted-foreground text-sm" role="status">
             {state.status}
-            {state.lastSynced ? ` · ${new Date(state.lastSynced).toLocaleTimeString()}` : ''}
+            {state.lastSynced ? ` · 最近同步：${new Date(state.lastSynced).toLocaleString()}` : ''}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy || state.status === '同步中…'} onClick={() => void syncNow()}>
@@ -60,7 +60,7 @@ export default function CloudSync() {
             </Button>
           </div>
           <p className="text-muted-foreground text-xs">
-            本机更改立即保存，网络恢复后继续同步。视频源仍使用配置导入/导出。
+            本机更改立即保存，网络恢复后继续同步。退出仅影响当前设备。
           </p>
           {(message || state.error || error) && (
             <p className="text-sm break-words" role="status">
@@ -69,7 +69,7 @@ export default function CloudSync() {
           )}
         </div>
       </SettingsSection>
-      {account?.role === 'admin' && <AccountAdmin />}
+      {showAdmin && account?.role === 'admin' && <AccountAdmin />}
     </>
   )
 }

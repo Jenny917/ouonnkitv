@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/shared/components/ui/button'
 import { ThemeToggle, useThemeState } from './theme'
 import SearchBox from './SearchBox'
+import AccountMenu from './AccountMenu'
 import { cn } from '@/shared/lib'
 
 interface NavigationProps {
@@ -16,7 +17,10 @@ interface NavigationProps {
   enableScrollAnimation?: boolean
 }
 
-export default function Navigation({ hidden = false, enableScrollAnimation = false }: NavigationProps) {
+export default function Navigation({
+  hidden = false,
+  enableScrollAnimation = false,
+}: NavigationProps) {
   const { mode } = useThemeState()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const location = useLocation()
@@ -38,7 +42,7 @@ export default function Navigation({ hidden = false, enableScrollAnimation = fal
         className={cn(
           'flex w-full justify-center',
           enableScrollAnimation
-            ? 'transform-gpu will-change-[transform,opacity] transition-[opacity,transform] duration-220 ease-out motion-reduce:transition-none'
+            ? 'transform-gpu transition-[opacity,transform] duration-220 ease-out will-change-[transform,opacity] motion-reduce:transition-none'
             : 'transition-none',
           hidden ? 'pointer-events-none -translate-y-2 opacity-0' : 'translate-y-0 opacity-100',
         )}
@@ -46,7 +50,7 @@ export default function Navigation({ hidden = false, enableScrollAnimation = fal
         <Navbar
           className={cn(
             enableScrollAnimation && 'transition-[backdrop-filter,box-shadow] duration-200',
-            enableScrollAnimation && hidden && 'backdrop-blur-none shadow-none',
+            enableScrollAnimation && hidden && 'shadow-none backdrop-blur-none',
           )}
         >
           {/* Logo 和侧边栏触发器 - 移动端搜索模式下隐藏 */}
@@ -110,6 +114,7 @@ export default function Navigation({ hidden = false, enableScrollAnimation = fal
                   {mode === 'system' && <Laptop />}
                 </Button>
               </ThemeToggle>
+              <AccountMenu />
             </div>
           </NavbarContent>
         </Navbar>
