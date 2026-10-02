@@ -13,11 +13,15 @@ export function playbackLeaseClient(mediaKey: string, title: string) {
       throw new Error('请重新登录')
     const { data, error } = await syncClient
       .rpc('playback_lease', {
-        ...input,
-        player,
-        device_label: `${browser} · ${platform}`,
-        media_key: mediaKey,
-        title,
+        p_operation: input.operation,
+        p_lease: input.lease,
+        p_takeover: input.takeover,
+        p_position: input.position,
+        p_duration: input.duration,
+        p_player: player,
+        p_device_label: `${browser} · ${platform}`,
+        p_media_key: mediaKey,
+        p_title: title,
       })
       .setHeader('Authorization', `Bearer ${state.session.access_token}`)
       .abortSignal(AbortSignal.timeout(8000))

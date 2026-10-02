@@ -69,6 +69,8 @@ There is no automatic import of old device data when signing in. If desired, the
 
 ## Sync behavior and limits
 
+If the playback migration previously failed at `position double precision default null`, run the entire corrected `supabase/migrations/202610030001_playback_lease.sql` again in the Supabase SQL Editor. It preserves existing table data and can be rerun after a partial attempt. Then redeploy the frontend and refresh open tabs: the corrected RPC uses `p_` parameter names, which must match the frontend.
+
 - Multiple devices stay signed in, but one player per account holds a server-issued playback lease. Starting playback on another device displays the current device and video and asks for confirmation. Cancelling leaves the existing player alone. Confirmation transfers ownership; the previous player pauses on its next heartbeat (normally within 5 seconds).
 - For the same episode, takeover resumes at the last position reported by the previous player (normally within 5 seconds of its current position). Different videos/episodes keep their own history. Separate browser tabs also count as separate players.
 - A lease is renewed every 5 seconds while playing and expires after 30 seconds without renewal. Closing a player attempts to release it immediately. Paused players stop renewing after a final checkpoint. During a prolonged network failure the app pauses before its last confirmed lease expires; starting playback requires a working connection.
