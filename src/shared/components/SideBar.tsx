@@ -17,6 +17,7 @@ import { motion } from 'framer-motion'
 import { Home, Search, Star, History, Settings } from 'lucide-react'
 import { OkiLogo } from '@/shared/components/icons'
 import { useVersionStore } from '../store'
+import { useAuthStore } from '@/shared/store/authStore'
 import { cn } from '@/shared/lib'
 
 interface SideBarProps {
@@ -34,6 +35,7 @@ export default function SideBar({
 }: SideBarProps) {
   const location = useLocation()
   const { isMobile, setOpenMobile } = useSidebar()
+  const isAdmin = useAuthStore(state => state.account?.role === 'admin')
 
   const handleNavLinkClick = () => {
     if (isMobile) {
@@ -66,13 +68,15 @@ export default function SideBar({
         icon: History,
       },
     ],
-    footer: [
-      {
-        title: '设置',
-        url: '/settings',
-        icon: Settings,
-      },
-    ],
+    footer: isAdmin
+      ? [
+          {
+            title: '设置',
+            url: '/settings',
+            icon: Settings,
+          },
+        ]
+      : [],
   }
   // 获取版本信息
   const { currentVersion } = useVersionStore()
@@ -82,7 +86,7 @@ export default function SideBar({
         enableScrollAnimation
           ? '[&_[data-slot=sidebar-gap]]:transition-[width] [&_[data-slot=sidebar-gap]]:duration-220 [&_[data-slot=sidebar-gap]]:ease-out'
           : '[&_[data-slot=sidebar-gap]]:transition-none',
-        '[&_[data-slot=sidebar-container]]:translate-x-0 [&_[data-slot=sidebar-container]]:opacity-100 [&_[data-slot=sidebar-container]]:transform-gpu [&_[data-slot=sidebar-container]]:will-change-[transform,opacity,top]',
+        '[&_[data-slot=sidebar-container]]:translate-x-0 [&_[data-slot=sidebar-container]]:transform-gpu [&_[data-slot=sidebar-container]]:opacity-100 [&_[data-slot=sidebar-container]]:will-change-[transform,opacity,top]',
         enableScrollAnimation
           ? '[&_[data-slot=sidebar-container]]:transition-[transform,opacity,top] [&_[data-slot=sidebar-container]]:duration-220 [&_[data-slot=sidebar-container]]:ease-out'
           : '[&_[data-slot=sidebar-container]]:transition-none',
@@ -90,7 +94,7 @@ export default function SideBar({
           ? '[&_[data-slot=sidebar-inner]]:transition-opacity [&_[data-slot=sidebar-inner]]:duration-200'
           : '[&_[data-slot=sidebar-inner]]:transition-none',
         hidden &&
-          '[&_[data-slot=sidebar-gap]]:w-0 [&_[data-slot=sidebar-container]]:pointer-events-none [&_[data-slot=sidebar-container]]:-translate-x-full [&_[data-slot=sidebar-container]]:opacity-0 [&_[data-slot=sidebar-inner]]:opacity-0',
+          '[&_[data-slot=sidebar-container]]:pointer-events-none [&_[data-slot=sidebar-container]]:-translate-x-full [&_[data-slot=sidebar-container]]:opacity-0 [&_[data-slot=sidebar-gap]]:w-0 [&_[data-slot=sidebar-inner]]:opacity-0',
         className,
       )}
       variant="floating"

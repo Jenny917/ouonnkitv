@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router'
 import { OkiLogo } from '@/shared/components/icons'
+import { useAuthStore } from '@/shared/store/authStore'
 
 // Layouts
 import MainLayout from '@/app/layouts/MainLayout'
@@ -52,6 +53,11 @@ const LoadingFallback = () => {
 const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<LoadingFallback />}>{children}</Suspense>
 )
+
+const AdminOnly = ({ children }: { children: React.ReactNode }) => {
+  const isAdmin = useAuthStore(state => state.account?.role === 'admin')
+  return isAdmin ? <>{children}</> : <Navigate to="/" replace />
+}
 
 const router = createBrowserRouter([
   // A. 核心布局路由 (带顶部导航)
@@ -125,7 +131,11 @@ const router = createBrowserRouter([
       },
       {
         path: 'settings',
-        element: <SettingsLayout />,
+        element: (
+          <AdminOnly>
+            <SettingsLayout />
+          </AdminOnly>
+        ),
         children: [
           { index: true, element: <Navigate to="source" replace /> },
           {
