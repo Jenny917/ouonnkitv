@@ -9,9 +9,14 @@ const mocks = vi.hoisted(() => ({
   profile: vi.fn(),
   createUser: vi.fn(),
   updateUser: vi.fn(),
+  deleteUser: vi.fn(),
+  listUsers: vi.fn(),
   invalidate: vi.fn(),
   target: vi.fn(),
   list: vi.fn(),
+  devices: vi.fn(),
+  insertProfile: vi.fn(),
+  insertAudit: vi.fn(),
 }))
 vi.mock('@supabase/supabase-js', () => ({ createClient: mocks.createClient }))
 const adminId = '00000000-0000-4000-8000-000000000001'
@@ -29,23 +34,60 @@ beforeEach(() => {
   vi.stubEnv('OKI_SUPABASE_ANON_KEY', 'public-key')
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'server-secret')
   mocks.profile.mockReset().mockResolvedValue({ data: [profile], error: null })
-  mocks.createUser.mockReset().mockResolvedValue({ error: null })
+  mocks.createUser.mockReset().mockResolvedValue({ data: { user: { id: userId } }, error: null })
   mocks.updateUser.mockReset().mockResolvedValue({ error: null })
+  mocks.deleteUser.mockReset().mockResolvedValue({ error: null })
+  mocks.listUsers.mockReset().mockResolvedValue({
+    data: { users: [{ id: adminId, last_sign_in_at: '2026-10-02T01:00:00Z' }] },
+    error: null,
+  })
   mocks.invalidate.mockReset().mockResolvedValue({ error: null })
-  mocks.target.mockReset().mockResolvedValue({ data: { id: userId, role: 'user' }, error: null })
+  mocks.target
+    .mockReset()
+    .mockResolvedValue({ data: { id: userId, role: 'user', username: 'alice' }, error: null })
   mocks.list.mockReset().mockResolvedValue({ data: [profile], error: null })
+  mocks.devices.mockReset().mockResolvedValue({
+    data: [
+      {
+        user_id: adminId,
+        label: 'Chrome · Windows',
+        first_seen_at: '2026-10-02T00:00:00Z',
+        last_seen_at: '2026-10-02T01:00:00Z',
+      },
+    ],
+    error: null,
+  })
+  mocks.insertProfile.mockReset().mockResolvedValue({ error: null })
+  mocks.insertAudit.mockReset().mockResolvedValue({ error: null })
   mocks.createClient.mockReset().mockImplementation((_url, key) =>
     key === 'public-key'
       ? { rpc: mocks.profile }
       : {
-          auth: { admin: { createUser: mocks.createUser, updateUserById: mocks.updateUser } },
+          auth: {
+            admin: {
+              createUser: mocks.createUser,
+              updateUserById: mocks.updateUser,
+              deleteUser: mocks.deleteUser,
+              listUsers: mocks.listUsers,
+            },
+          },
           rpc: mocks.invalidate,
-          from: () => ({
-            select: () => ({
-              eq: () => ({ maybeSingle: mocks.target }),
-              order: () => ({ order: () => ({ range: mocks.list }) }),
-            }),
-          }),
+          from: (table: string) =>
+            table === 'admin_audit_log'
+              ? { insert: mocks.insertAudit }
+              : table === 'account_devices'
+                ? {
+                    select: () => ({
+                      in: () => ({ order: mocks.devices }),
+                    }),
+                  }
+                : {
+                    insert: mocks.insertProfile,
+                    select: () => ({
+                      eq: () => ({ maybeSingle: mocks.target }),
+                      order: () => ({ order: () => ({ range: mocks.list }) }),
+                    }),
+                  },
         },
   )
 })
@@ -78,6 +120,25 @@ describe('managed account API', () => {
     expect(mocks.createUser).not.toHaveBeenCalled()
     expect(mocks.createClient.mock.calls.every(call => call[1] === 'public-key')).toBe(true)
   })
+  it('lists last login and recent device activity for the dashboard', async () => {
+    const res = await request()
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith({
+      accounts: [
+        expect.objectContaining({
+          id: adminId,
+          last_sign_in_at: '2026-10-02T01:00:00Z',
+          devices: [
+            expect.objectContaining({
+              label: 'Chrome · Windows',
+              last_seen_at: '2026-10-02T01:00:00Z',
+            }),
+          ],
+        }),
+      ],
+      nextOffset: null,
+    })
+  })
   it('creates normalized usernames with server-controlled role metadata', async () => {
     const res = await request({
       action: 'create',
@@ -92,6 +153,15 @@ describe('managed account API', () => {
       email_confirm: true,
       app_metadata: { managed_account: true, username: 'alice', account_role: 'user' },
     })
+    expect(mocks.insertProfile).toHaveBeenCalledWith({
+      id: userId,
+      username: 'alice',
+      role: 'user',
+      enabled: true,
+    })
+    expect(mocks.insertAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'create', target_username: 'alice' }),
+    )
     expect(JSON.stringify(res.json.mock.calls)).not.toContain('long-password')
     expect(JSON.stringify(res.json.mock.calls)).not.toContain('server-secret')
   })
@@ -117,6 +187,32 @@ describe('managed account API', () => {
       target_id: userId,
       new_enabled: false,
     })
+  })
+  it('forces logout for every device and records who performed it', async () => {
+    const res = await request({ action: 'force-logout', id: userId })
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(mocks.invalidate).toHaveBeenCalledWith('invalidate_account_sessions', {
+      target_id: userId,
+      new_enabled: null,
+    })
+    expect(mocks.insertAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor_username: 'admin',
+        target_username: 'alice',
+        action: 'force_logout',
+      }),
+    )
+  })
+  it('invalidates sessions before permanently deleting a user and records the deletion', async () => {
+    const res = await request({ action: 'delete', id: userId })
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(mocks.invalidate.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.deleteUser.mock.invocationCallOrder[0],
+    )
+    expect(mocks.deleteUser).toHaveBeenCalledWith(userId)
+    expect(mocks.insertAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'delete', target_username: 'alice' }),
+    )
   })
   it('rejects weak passwords and invalid usernames', async () => {
     const res = await request({ action: 'create', username: 'a@b', password: 'short' })

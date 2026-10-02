@@ -31,18 +31,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     if (req.method === 'GET') {
       const offset = Number(req.query.offset ?? 0)
+      const search =
+        typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : ''
       if (!Number.isSafeInteger(offset) || offset < 0)
         return res.status(400).json({ error: 'Invalid offset' })
-      const { data, error } = await admin
+      if (req.query.view === 'audit') {
+        const { data, error } = await admin
+          .from('admin_audit_log')
+          .select('id,actor_username,target_username,action,details,created_at')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(offset, offset + 49)
+        if (error) throw error
+        return res
+          .status(200)
+          .json({ audit: data, nextOffset: data?.length === 50 ? offset + 50 : null })
+      }
+      let accountQuery = admin
         .from('user_accounts')
         .select('id,username,role,enabled,created_at')
         .order('created_at')
         .order('id')
         .range(offset, offset + 49)
+      if (search)
+        accountQuery = accountQuery.ilike(
+          'username',
+          `%${search.split('%').join('\\%').split('_').join('\\_')}%`,
+        )
+      const { data, error } = await accountQuery
       if (error) throw error
+      const accountIds = (data ?? []).map(account => account.id)
+      const [deviceResult, authUsers] = await Promise.all([
+        accountIds.length
+          ? admin
+              .from('account_devices')
+              .select('user_id,label,first_seen_at,last_seen_at')
+              .in('user_id', accountIds)
+              .order('last_seen_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+        admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      ])
+      const { data: deviceRows, error: deviceError } = deviceResult
+      if (deviceError) throw deviceError
+      if (authUsers.error) throw authUsers.error
+      const signIns = new Map(
+        authUsers.data.users.map(user => [user.id, user.last_sign_in_at ?? null]),
+      )
+      const accounts = (data ?? []).map(account => ({
+        ...account,
+        last_sign_in_at: signIns.get(account.id) ?? null,
+        devices: (deviceRows ?? [])
+          .filter(device => device.user_id === account.id)
+          .map(({ label, first_seen_at, last_seen_at }) => ({
+            label,
+            first_seen_at,
+            last_seen_at,
+          })),
+      }))
       return res
         .status(200)
-        .json({ accounts: data, nextOffset: data?.length === 50 ? offset + 50 : null })
+        .json({ accounts, nextOffset: accounts.length === 50 ? offset + 50 : null })
     }
     if (!req.headers['content-type']?.startsWith('application/json')) {
       return res.status(415).json({ error: 'Expected application/json' })
@@ -73,10 +121,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .status(400)
           .json({ error: '账号资料创建失败，请检查数据库迁移和用户名是否已存在' })
       }
+      await admin.from('admin_audit_log').insert({
+        actor_id: profile.data.id,
+        actor_username: profile.data.username,
+        target_id: created.user.id,
+        target_username: action.username,
+        action: 'create',
+      })
     } else {
       const { data: target, error: targetError } = await admin
         .from('user_accounts')
-        .select('id,role')
+        .select('id,role,username')
         .eq('id', action.id)
         .maybeSingle()
       if (targetError) throw targetError
@@ -84,6 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!target || target.role !== 'user' || action.id === profile.data.id) {
         return res.status(403).json({ error: '此操作仅适用于普通用户账号' })
       }
+      const targetUsername = target.username
       const { error: revokeError } = await admin.rpc('invalidate_account_sessions', {
         target_id: action.id,
         new_enabled: action.action === 'set-enabled' ? action.enabled : null,
@@ -99,6 +155,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         if (finalRevokeError) throw finalRevokeError
       }
+      if (action.action === 'delete') {
+        const { error } = await admin.auth.admin.deleteUser(action.id)
+        if (error) return res.status(400).json({ error: '删除账号失败，请重试' })
+      }
+      const auditAction =
+        action.action === 'set-enabled' ? 'set_enabled' : action.action.replace('-', '_')
+      await admin.from('admin_audit_log').insert({
+        actor_id: profile.data.id,
+        actor_username: profile.data.username,
+        target_id: action.id,
+        target_username: targetUsername,
+        action: auditAction,
+        details: action.action === 'set-enabled' ? { enabled: action.enabled } : {},
+      })
     }
     return res.status(200).json({ ok: true })
   } catch {

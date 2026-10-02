@@ -72,6 +72,7 @@ beforeEach(() => {
             role: 'user',
             enabled: true,
             created_at: '2026-10-01',
+            devices: [],
           }
         : null,
     })

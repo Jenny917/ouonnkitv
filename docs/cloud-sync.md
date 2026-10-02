@@ -9,6 +9,7 @@ An administrator creates usernames and passwords. Users sign in once and their f
    - [Sync records](../supabase/migrations/202610010001_user_sync.sql)
    - [Managed accounts](../supabase/migrations/202610010002_managed_accounts.sql)
    - [Provisioning fix](../supabase/migrations/202610010003_account_provisioning_fix.sql)
+   - [Admin dashboard](../supabase/migrations/202610020001_admin_dashboard.sql)
 3. Under Supabase Authentication, keep the email/password provider enabled but **disable Allow new users to sign up**. Keep multiple simultaneous sessions allowed. The application uses internal, automatically confirmed email-shaped identifiers for Supabase Auth; users only enter usernames, and no mailbox or SMTP is needed. The database trigger also rejects accounts not provisioned by the server admin API.
 4. Configure the Vercel project variables:
 
@@ -51,7 +52,9 @@ The script makes a one-time remote API call; it does not install a local databas
 2. Open **Settings → Personal configuration (个人配置) → User management (用户管理)**.
 3. Create user `a` and a password of at least 10 characters. Usernames are case-insensitive, 1–32 characters, using letters, numbers, `_` or `-`, starting with a letter/number.
 4. User `a` signs in on a phone and laptop. Both use the same account data automatically. User `b` gets a separate collection. Admins manage account metadata; their app session does not receive another user's favorites or history.
-5. Reset a user's password or disable the account from this panel. Database authorization immediately blocks old sessions. Password reset requires fresh login on all devices; re-enabling an account does not restore its old sessions. Open apps check account status every 30 seconds and on focus/reconnect.
+5. Search users and review their last login and recently active browser/device sessions. Activity updates while an authenticated app is open.
+6. Reset a user's password, force logout on every device, disable the account, or permanently delete the account and its synced data. Destructive actions require confirmation. Database authorization immediately blocks old sessions. Password reset requires fresh login on all devices; re-enabling an account does not restore its old sessions. Open apps check account status every 30 seconds and on focus/reconnect.
+7. Review the recent administrator audit log. It records successful account creation, status changes, password resets, forced logouts and deletions without storing passwords.
 
 There is no automatic import of old device data when signing in. If desired, the user can choose **Import this device's original favorites and history (导入此设备原有收藏与历史)**. Existing cloud records, including deletions, win over these imports. Verify that this is the user's own collection before importing on a shared device.
 
@@ -77,7 +80,8 @@ Keep the first two migrations if they are already applied; run the third provisi
 4. Make an offline edit while the app remains open, reconnect and confirm it uploads.
 5. Reset `a`'s password; confirm old sessions cannot sync and the new password works on both devices.
 6. Disable `a`; confirm cloud access is blocked. Re-enable it and confirm fresh login is required.
-7. As `b`, call `/api/accounts` with its token and confirm HTTP 403. Direct reads of `a`'s sync rows must also be denied by RLS.
+7. Force logout `a`; confirm both devices return to the login screen. Confirm the action appears in the audit log.
+8. As `b`, call `/api/accounts` with its token and confirm HTTP 403. Direct reads of `a`'s sync rows must also be denied by RLS.
 
 Automated tests exercise authorization failures, admin operations, account transitions, offline queues and merge conflicts. Live Supabase policy enforcement and the two-device flow still need verification with your configured project.
 

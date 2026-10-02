@@ -12,6 +12,17 @@ export const accountSchema = z.object({
   role: z.enum(['admin', 'user']),
   enabled: z.boolean(),
   created_at: z.string(),
+  last_sign_in_at: z.string().nullable().optional(),
+  devices: z
+    .array(
+      z.object({
+        label: z.string(),
+        first_seen_at: z.string(),
+        last_seen_at: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
 })
 export type Account = z.infer<typeof accountSchema>
 
@@ -27,4 +38,16 @@ export const adminActionSchema = z.discriminatedUnion('action', [
     id: z.string().uuid(),
     password: passwordSchema,
   }),
+  z.object({ action: z.literal('force-logout'), id: z.string().uuid() }),
+  z.object({ action: z.literal('delete'), id: z.string().uuid() }),
 ])
+
+export const auditEntrySchema = z.object({
+  id: z.union([z.number(), z.string()]),
+  actor_username: z.string(),
+  target_username: z.string().nullable(),
+  action: z.string(),
+  details: z.record(z.string(), z.unknown()),
+  created_at: z.string(),
+})
+export type AuditEntry = z.infer<typeof auditEntrySchema>

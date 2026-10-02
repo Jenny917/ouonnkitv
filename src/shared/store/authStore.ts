@@ -63,6 +63,16 @@ async function verifySession(session: Session | null, request: number) {
       return
     }
     useAuthStore.setState({ session, account: result.data, initialized: true, error: null })
+    const platform =
+      (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
+        ?.platform ||
+      navigator.platform ||
+      'Unknown platform'
+    const browser =
+      navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/)?.[0] || 'Browser'
+    void syncClient
+      .rpc('touch_account_activity', { device_label: `${browser} · ${platform}` })
+      .setHeader('Authorization', `Bearer ${session.access_token}`)
   } catch (error) {
     if (request !== generation) return
     useAuthStore.setState({
