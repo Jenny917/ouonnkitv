@@ -27,7 +27,17 @@ export function mergeRemote(journal: Journal, rows: SyncRecord[]): Journal {
   const result = { ...journal }
   for (const row of rows) {
     const key = recordKey(row)
-    if (!result[key] || result[key].modified_at === 0 || newer(row, result[key])) {
+    const local = result[key]
+    // After upload, the server is authoritative for fenced playback progress. A rejected
+    // stale player's clock must not keep its local progress ahead of the new owner forever.
+    const serverPlayback =
+      row.kind === 'history' &&
+      !row.deleted &&
+      !local?.pending &&
+      !!row.value &&
+      typeof row.value === 'object' &&
+      'playbackLeaseId' in row.value
+    if (!local || local.modified_at === 0 || serverPlayback || newer(row, local)) {
       result[key] = { ...row, pending: false }
     }
   }

@@ -9,6 +9,7 @@ export type {
 
 // 观看历史项
 export interface ViewingHistoryItem {
+  playbackLeaseId?: string
   // 记录类型：直连播放记录为 cms，TMDB 播放记录为 tmdb
   recordType: 'cms' | 'tmdb'
   title: string

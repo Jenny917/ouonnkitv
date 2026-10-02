@@ -11,6 +11,7 @@ An administrator creates usernames and passwords. Users sign in once and their f
    - [Provisioning fix](../supabase/migrations/202610010003_account_provisioning_fix.sql)
    - [Admin dashboard](../supabase/migrations/202610020001_admin_dashboard.sql)
    - [NSFW source access](../supabase/migrations/202610020002_nsfw_access.sql)
+   - [Single active player](../supabase/migrations/202610030001_playback_lease.sql)
 3. Under Supabase Authentication, keep the email/password provider enabled but **disable Allow new users to sign up**. Keep multiple simultaneous sessions allowed. The application uses internal, automatically confirmed email-shaped identifiers for Supabase Auth; users only enter usernames, and no mailbox or SMTP is needed. The database trigger also rejects accounts not provisioned by the server admin API.
 4. Configure the Vercel project variables:
 
@@ -68,8 +69,13 @@ There is no automatic import of old device data when signing in. If desired, the
 
 ## Sync behavior and limits
 
+- Multiple devices stay signed in, but one player per account holds a server-issued playback lease. Starting playback on another device displays the current device and video and asks for confirmation. Cancelling leaves the existing player alone. Confirmation transfers ownership; the previous player pauses on its next heartbeat (normally within 5 seconds).
+- For the same episode, takeover resumes at the last position reported by the previous player (normally within 5 seconds of its current position). Different videos/episodes keep their own history. Separate browser tabs also count as separate players.
+- A lease is renewed every 5 seconds while playing and expires after 30 seconds without renewal. Closing a player attempts to release it immediately. Paused players stop renewing after a final checkpoint. During a prolonged network failure the app pauses before its last confirmed lease expires; starting playback requires a working connection.
+- Progress carries a playback lease ID. Database triggers reject progress from replaced players; delayed/offline uploads cannot overwrite the current player's progress. Favorites, preferences and history deletion remain available across devices. Apply the playback migration before deploying this frontend, and refresh old open tabs after deployment. This coordinates app playback; it cannot revoke downloaded media or copied third-party stream URLs.
+
 - Local changes appear immediately. Uploads run within about 10 seconds during use, with a pull every 30 seconds while visible and sync on focus, reconnect, visibility change and video pause. Failed uploads remain queued locally.
-- Different items merge independently. Changes to the same item use the newest edit timestamp, with deterministic tie-breaking. Keep device clocks accurate. For two devices playing the same episode, the most recently saved position wins; there is not yet a separate playback-session history. Sync does not seek an already-playing video.
+- Different items merge independently. Changes to the same item normally use the newest edit timestamp, with deterministic tie-breaking. Keep device clocks accurate. A new playback owner takes precedence over the previous owner's progress. Ordinary background sync does not seek an already-playing video.
 - Deletions retain tombstones so older devices cannot resurrect removed items. Local history limits can produce deletions that sync to the account.
 - Sources, subscriptions, API tokens, network settings, search-history text and caches are not synced. Import/export source configuration separately; CMS playback needs matching sources on each device.
 - Signing out affects only the current device. It restores the previous guest snapshot locally, while the login screen blocks access. Account caches/queued edits remain on that browser, keyed by account ID. Clear site data to remove those copies, after uploading pending changes. This is not encrypted local storage.

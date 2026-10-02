@@ -13,6 +13,26 @@ const record = (overrides: Partial<LocalRecord> = {}): LocalRecord => ({
 })
 
 describe('cloud sync conflict resolution', () => {
+  it('accepts server-fenced playback progress after a stale upload even if the old clock is ahead', () => {
+    const local = record({
+      kind: 'history',
+      modified_at: 99999,
+      pending: false,
+      value: { playbackLeaseId: 'old' },
+    })
+    const remote = record({
+      kind: 'history',
+      modified_at: 100,
+      value: { playbackLeaseId: 'new', playbackPosition: 42 },
+    })
+    expect(mergeRemote({ [recordKey(local)]: local }, [remote])[recordKey(local)].value).toEqual(
+      remote.value,
+    )
+    expect(
+      mergeRemote({ [recordKey(local)]: { ...local, pending: true } }, [remote])[recordKey(local)]
+        .pending,
+    ).toBe(true)
+  })
   it('keeps offline edits when an older remote snapshot arrives', () => {
     const local = record({ modified_at: 200 })
     const key = recordKey(local)

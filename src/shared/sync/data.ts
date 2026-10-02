@@ -47,6 +47,7 @@ const favoriteSchema = z.discriminatedUnion('sourceType', [
   }),
 ])
 const historySchema = z.object({
+  playbackLeaseId: z.string().uuid().optional(),
   recordType: z.enum(['cms', 'tmdb']),
   title: z.string().nullable().optional(),
   imageUrl: z.string().nullable().optional(),

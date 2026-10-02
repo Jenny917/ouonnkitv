@@ -23,7 +23,10 @@ import { useDocumentTitle, useCmsClient } from '@/shared/hooks'
 import { useTmdbEnabled } from '@/shared/hooks/useTmdbMode'
 import { cn } from '@/shared/lib/utils'
 import { buildCmsPlayPath, buildTmdbDetailPath, buildTmdbPlayPath } from '@/shared/lib/routes'
-import { isTmdbHistoryItem } from '@/shared/lib/viewingHistory'
+import { getHistoryItemKey, isTmdbHistoryItem } from '@/shared/lib/viewingHistory'
+import { ConfirmModal } from '@/shared/components/common/ConfirmModal'
+import { createPlaybackLease, type PlaybackConflict } from '@/features/player/lib/playbackLease'
+import { playbackLeaseClient } from '@/features/player/lib/playbackLeaseClient'
 import { getBackdropUrl } from '@/shared/lib/tmdb'
 import { useFavoritesStore } from '@/features/favorites/store/favoritesStore'
 import type { TmdbMediaItem, TmdbMediaType } from '@/shared/types/tmdb'
@@ -39,7 +42,11 @@ import {
   PlayerInfoAndRecommendations,
   PlayerLoadingSkeleton,
 } from '@/features/player/components'
-import { useEpisodePagination, useMobilePlayerGestures, useTmdbPlayback } from '@/features/player/hooks'
+import {
+  useEpisodePagination,
+  useMobilePlayerGestures,
+  useTmdbPlayback,
+} from '@/features/player/hooks'
 import {
   buildTmdbSelectionScopeKey,
   computeMiniPlayerRect,
@@ -71,7 +78,7 @@ interface PlayerTransientNotice {
 }
 
 const m3u8Processor = createM3u8Processor({ filterAds: true })
-type HlsConstructor = typeof import('hls.js')['default']
+type HlsConstructor = (typeof import('hls.js'))['default']
 const BETTER_SOURCE_NOTICE_DURATION = 8000
 
 let hlsConstructorPromise: Promise<HlsConstructor> | null = null
@@ -182,8 +189,12 @@ export default function UnifiedPlayer() {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { type = '', tmdbId = '', sourceCode: routeSourceCode = '', vodId: routeVodId = '' } =
-    useParams<PlayerRouteParams>()
+  const {
+    type = '',
+    tmdbId = '',
+    sourceCode: routeSourceCode = '',
+    vodId: routeVodId = '',
+  } = useParams<PlayerRouteParams>()
 
   const cmsClient = useCmsClient()
   const tmdbEnabled = useTmdbEnabled()
@@ -223,7 +234,9 @@ export default function UnifiedPlayer() {
   const isCmsRoute = routeValidation.isValid && routeValidation.mode === 'cms'
   const routeError = routeValidation.isValid ? null : routeValidation.message
   const tmdbMediaType: TmdbMediaType | null =
-    routeValidation.isValid && routeValidation.mode === 'tmdb' ? routeValidation.tmdbMediaType : null
+    routeValidation.isValid && routeValidation.mode === 'tmdb'
+      ? routeValidation.tmdbMediaType
+      : null
   const parsedTmdbId =
     routeValidation.isValid && routeValidation.mode === 'tmdb' ? routeValidation.tmdbId : 0
 
@@ -246,10 +259,17 @@ export default function UnifiedPlayer() {
   const [transientNotices, setTransientNotices] = useState<PlayerTransientNotice[]>([])
   const [dismissedBetterNoticeKeys, setDismissedBetterNoticeKeys] = useState<string[]>([])
   const [betterNoticeProgress, setBetterNoticeProgress] = useState(100)
-  const [activeRightPanel, setActiveRightPanel] = useState<'episode' | 'source' | 'season' | null>('episode')
+  const [activeRightPanel, setActiveRightPanel] = useState<'episode' | 'source' | 'season' | null>(
+    'episode',
+  )
   const [gestureVolumeLevel, setGestureVolumeLevel] = useState<number | null>(null)
   const [gestureSeekPreviewTime, setGestureSeekPreviewTime] = useState<number | null>(null)
   const [activeArt, setActiveArt] = useState<Artplayer | null>(null)
+  const [playbackNotice, setPlaybackNotice] = useState('')
+  const [takeoverPrompt, setTakeoverPrompt] = useState<{
+    conflict: PlaybackConflict
+    confirm: () => void
+  } | null>(null)
   const selectedEpisode = parseEpisodeIndex(episodeIndexParam)
   const noticeTimersRef = useRef<Map<string, number>>(new Map())
   const noticeAnimationFramesRef = useRef<Map<string, number>>(new Map())
@@ -330,7 +350,9 @@ export default function UnifiedPlayer() {
     gestureVolumeLevel !== null ? (
       <div className="pointer-events-none absolute top-3 left-1/2 z-[160] w-[min(52vw,300px)] -translate-x-1/2">
         <div className="rounded-full border border-white/15 bg-black/70 px-2.5 py-2 shadow-lg backdrop-blur-sm">
-          <div className="mb-1 text-center text-xs text-white">{Math.round(gestureVolumeLevel * 100)}%</div>
+          <div className="mb-1 text-center text-xs text-white">
+            {Math.round(gestureVolumeLevel * 100)}%
+          </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-white/20">
             <div
               className="h-full rounded-full bg-white transition-[width] duration-75"
@@ -341,7 +363,11 @@ export default function UnifiedPlayer() {
       </div>
     ) : null
 
-  const currentTmdbSelectionScopeKey = buildTmdbSelectionScopeKey(tmdbMediaType, parsedTmdbId, querySeasonNumber)
+  const currentTmdbSelectionScopeKey = buildTmdbSelectionScopeKey(
+    tmdbMediaType,
+    parsedTmdbId,
+    querySeasonNumber,
+  )
   const { resolvedSourceCode, resolvedVodId, hasExplicitTmdbSelection } = resolvePlayerSelection({
     isCmsRoute,
     isTmdbRoute,
@@ -501,7 +527,9 @@ export default function UnifiedPlayer() {
         isTmdbRoute &&
         !hasExplicitTmdbSelection &&
         !hasResolvedTmdbSelection &&
-        (tmdbPlayback.tmdbLoading || tmdbPlayback.playlist.loading || !tmdbPlayback.playlist.searched)
+        (tmdbPlayback.tmdbLoading ||
+          tmdbPlayback.playlist.loading ||
+          !tmdbPlayback.playlist.searched)
 
       if (shouldWaitForTmdbSelection) {
         if (!canCommit()) return
@@ -623,7 +651,9 @@ export default function UnifiedPlayer() {
       item: ViewingHistoryItem,
     ) => {
       const progress =
-        item.duration > 0 ? Math.min(100, Math.max(0, (item.playbackPosition / item.duration) * 100)) : 0
+        item.duration > 0
+          ? Math.min(100, Math.max(0, (item.playbackPosition / item.duration) * 100))
+          : 0
       const previous = targetMap.get(item.episodeIndex)
 
       if (!previous || item.timestamp > previous.timestamp) {
@@ -791,7 +821,9 @@ export default function UnifiedPlayer() {
                 if (artWithHls.hls) artWithHls.hls.destroy()
                 const hlsConfig: Partial<HlsConfig> = adFilteringEnabled
                   ? {
-                      loader: getCustomHlsLoaderClass(HlsClass) as unknown as typeof HlsClass.DefaultConfig.loader,
+                      loader: getCustomHlsLoaderClass(
+                        HlsClass,
+                      ) as unknown as typeof HlsClass.DefaultConfig.loader,
                     }
                   : {}
                 const hls = new HlsClass(hlsConfig)
@@ -911,7 +943,78 @@ export default function UnifiedPlayer() {
       }
     })
 
+    const historyIdentity: ViewingHistoryItem = {
+      recordType: canUseTmdbHistory ? 'tmdb' : 'cms',
+      title: detail.videoInfo?.title || '未知视频',
+      imageUrl: '',
+      sourceCode: resolvedSourceCode,
+      sourceName: detail.videoInfo?.source_name || '',
+      vodId: resolvedVodId,
+      tmdbMediaType: canUseTmdbHistory ? tmdbMediaType || undefined : undefined,
+      tmdbId: canUseTmdbHistory ? parsedTmdbId : undefined,
+      tmdbSeasonNumber:
+        canUseTmdbHistory && tmdbMediaType === 'tv' ? tmdbSeasonNumberForHistory : undefined,
+      episodeIndex: selectedEpisode,
+      playbackPosition: 0,
+      duration: 0,
+      timestamp: 0,
+    }
+    setPlaybackNotice('')
+    setTakeoverPrompt(null)
+    const leaseController = createPlaybackLease({
+      request: playbackLeaseClient(
+        getHistoryItemKey(historyIdentity),
+        `${historyIdentity.title} · ${episodes[selectedEpisode] || ''}`,
+      ),
+      progress: () => ({
+        position: Number.isFinite(art.currentTime) ? Math.max(0, art.currentTime) : 0,
+        duration: Number.isFinite(art.duration) ? Math.max(0, art.duration) : 0,
+      }),
+      isPlaying: () => !art.video.paused,
+      pause: () => art.video.pause(),
+      acquired: position => {
+        if (position != null && Number.isFinite(art.duration) && art.duration > 0) {
+          art.seek = Math.min(position, Math.max(0, art.duration - 1))
+        }
+        void art.video.play().catch(() => setPlaybackNotice('已取得播放权限，请再次点击播放。'))
+      },
+      conflict: conflict => {
+        if (conflict) {
+          // The confirmation dialog lives outside the native/fullscreen player.
+          if (art.fullscreen) art.fullscreen = false
+          if (art.fullscreenWeb) art.fullscreenWeb = false
+        }
+        setTakeoverPrompt(
+          conflict
+            ? {
+                conflict,
+                confirm: () => void leaseController.acquire(conflict.lease_id),
+              }
+            : null,
+        )
+      },
+      notice: setPlaybackNotice,
+    })
+    const authorizePlay = () => {
+      if (!leaseController.currentLease()) void leaseController.acquire()
+    }
+    const checkOwnership = () => {
+      if (!art.video.paused && !leaseController.currentLease()) art.video.pause()
+    }
+    art.video.addEventListener('play', authorizePlay, true)
+    art.video.addEventListener('timeupdate', checkOwnership, true)
+    const leaseHeartbeat = window.setInterval(() => void leaseController.renew(), 5000)
+    const refreshLease = () => {
+      checkOwnership()
+      void leaseController.renew()
+    }
+    window.addEventListener('focus', refreshLease)
+    window.addEventListener('online', refreshLease)
+    document.addEventListener('visibilitychange', refreshLease)
+
     const addHistorySnapshot = () => {
+      const playbackLeaseId = leaseController.currentLease()
+      if (!playbackLeaseId) return
       if (!resolvedSourceCode || !resolvedVodId || !detail.videoInfo) return
       const historyImageUrl =
         (canUseTmdbHistory
@@ -920,6 +1023,7 @@ export default function UnifiedPlayer() {
         detail.videoInfo.cover ||
         ''
       addViewingHistory({
+        playbackLeaseId,
         recordType: canUseTmdbHistory ? 'tmdb' : 'cms',
         title: detail.videoInfo.title || '未知视频',
         imageUrl: historyImageUrl,
@@ -939,8 +1043,12 @@ export default function UnifiedPlayer() {
     }
 
     art.on('video:play', addHistorySnapshot)
-    art.on('video:pause', addHistorySnapshot)
+    art.on('video:pause', () => {
+      addHistorySnapshot()
+      void leaseController.renew(true)
+    })
     art.on('video:ended', () => {
+      if (!leaseController.currentLease()) return
       addHistorySnapshot()
       nextEpisode()
     })
@@ -950,6 +1058,8 @@ export default function UnifiedPlayer() {
     const TIME_UPDATE_INTERVAL = 3000
 
     const timeUpdateHandler = () => {
+      const playbackLeaseId = leaseController.currentLease()
+      if (!playbackLeaseId) return
       if (!resolvedSourceCode || !resolvedVodId || !detail.videoInfo) return
       const currentTime = art.currentTime || 0
       const duration = art.duration || 0
@@ -964,6 +1074,7 @@ export default function UnifiedPlayer() {
           detail.videoInfo.cover ||
           ''
         addViewingHistory({
+          playbackLeaseId,
           recordType: canUseTmdbHistory ? 'tmdb' : 'cms',
           title: detail.videoInfo.title || '未知视频',
           imageUrl: historyImageUrl,
@@ -1069,6 +1180,12 @@ export default function UnifiedPlayer() {
     }
 
     return () => {
+      window.clearInterval(leaseHeartbeat)
+      window.removeEventListener('focus', refreshLease)
+      window.removeEventListener('online', refreshLease)
+      document.removeEventListener('visibilitychange', refreshLease)
+      art.video.removeEventListener('play', authorizePlay, true)
+      art.video.removeEventListener('timeupdate', checkOwnership, true)
       miniCleanup?.()
       throttledTimeUpdate.cancel()
       handleControlViewportChange.cancel()
@@ -1078,10 +1195,11 @@ export default function UnifiedPlayer() {
       art.off('fullscreenWeb', syncMobileControlBar)
       if (playerRef.current && playerRef.current.destroy) {
         addHistorySnapshot()
+        leaseController.dispose()
         setActiveArt(current => (current === art ? null : current))
         playerRef.current.destroy(false)
         playerRef.current = null
-      }
+      } else leaseController.dispose()
     }
   }, [
     addViewingHistory,
@@ -1151,7 +1269,8 @@ export default function UnifiedPlayer() {
     }
 
     const preferredSource =
-      seasonSourceOptions.find(option => option.sourceCode === resolvedSourceCode) || seasonSourceOptions[0]
+      seasonSourceOptions.find(option => option.sourceCode === resolvedSourceCode) ||
+      seasonSourceOptions[0]
 
     const nextPath = buildTmdbPlayPath('tv', parsedTmdbId, {
       sourceCode: preferredSource.sourceCode,
@@ -1204,7 +1323,8 @@ export default function UnifiedPlayer() {
       id: parsedTmdbId,
       mediaType: tmdbMediaType,
       title: tmdbPlayback.tmdbDetail?.title || '未知视频',
-      originalTitle: tmdbPlayback.tmdbDetail?.originalTitle || tmdbPlayback.tmdbDetail?.title || '未知视频',
+      originalTitle:
+        tmdbPlayback.tmdbDetail?.originalTitle || tmdbPlayback.tmdbDetail?.title || '未知视频',
       overview: tmdbPlayback.tmdbDetail?.overview || '',
       posterPath: tmdbPlayback.tmdbDetail?.posterPath || null,
       backdropPath: tmdbPlayback.tmdbDetail?.backdropPath || null,
@@ -1247,7 +1367,11 @@ export default function UnifiedPlayer() {
     }
 
     const sourceName =
-      detail?.videoInfo?.source_name || sourceConfig?.name || routeSourceCode || resolvedSourceCode || '直连源'
+      detail?.videoInfo?.source_name ||
+      sourceConfig?.name ||
+      routeSourceCode ||
+      resolvedSourceCode ||
+      '直连源'
 
     return [
       {
@@ -1278,7 +1402,10 @@ export default function UnifiedPlayer() {
 
   const bestSourceOption = useMemo(() => {
     if (!isTmdbRoute || sourceOptions.length === 0) return null
-    return sourceOptions.reduce((best, option) => (option.bestScore > best.bestScore ? option : best), sourceOptions[0])
+    return sourceOptions.reduce(
+      (best, option) => (option.bestScore > best.bestScore ? option : best),
+      sourceOptions[0],
+    )
   }, [isTmdbRoute, sourceOptions])
 
   const betterSourceNoticeKey = useMemo(() => {
@@ -1286,7 +1413,8 @@ export default function UnifiedPlayer() {
 
     const currentScore = currentSourceOption?.bestScore ?? -1
     const hasDifferentTarget =
-      bestSourceOption.sourceCode !== resolvedSourceCode || bestSourceOption.bestVodId !== resolvedVodId
+      bestSourceOption.sourceCode !== resolvedSourceCode ||
+      bestSourceOption.bestVodId !== resolvedVodId
     if (!hasDifferentTarget || bestSourceOption.bestScore <= currentScore) return ''
 
     const seasonScope =
@@ -1356,7 +1484,12 @@ export default function UnifiedPlayer() {
     return () => {
       clearBetterNoticeRuntime()
     }
-  }, [betterSourceNoticeKey, clearBetterNoticeRuntime, dismissBetterSourceNotice, shouldShowBetterSourceNotice])
+  }, [
+    betterSourceNoticeKey,
+    clearBetterNoticeRuntime,
+    dismissBetterSourceNotice,
+    shouldShowBetterSourceNotice,
+  ])
 
   const handleSwitchToBetterSource = useCallback(() => {
     if (!bestSourceOption) return
@@ -1373,7 +1506,8 @@ export default function UnifiedPlayer() {
   )
 
   const matchingNoticeText = useMemo(() => {
-    const { completed, total, currentSourceName, lastResultSourceName } = tmdbPlayback.playlist.progress
+    const { completed, total, currentSourceName, lastResultSourceName } =
+      tmdbPlayback.playlist.progress
     const progressText = total > 0 ? `${Math.min(completed, total)}/${total}` : '--/--'
     const sourceText = currentSourceName || lastResultSourceName
     return sourceText ? `持续匹配中 ${progressText} · ${sourceText}` : `持续匹配中 ${progressText}`
@@ -1571,15 +1705,29 @@ export default function UnifiedPlayer() {
       )}
 
       <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <ConfirmModal
+          isOpen={!!takeoverPrompt}
+          onClose={() => setTakeoverPrompt(null)}
+          onConfirm={() => takeoverPrompt?.confirm()}
+          title="切换播放设备？"
+          description={`${takeoverPrompt?.conflict.device_label || '另一台设备'} 正在播放 ${takeoverPrompt?.conflict.title || '视频'}。确认后将在此设备播放，原设备将暂停。`}
+          confirmText="在此设备播放"
+          cancelText="暂不接管"
+        />
         <div className="min-w-0 space-y-3">
+          {playbackNotice && (
+            <p className="rounded-lg border px-3 py-2 text-sm" role="status">
+              {playbackNotice}
+            </p>
+          )}
           {error && (
             <div className="rounded-lg border border-red-400/35 bg-red-500/10 px-3 py-2 text-sm text-red-500">
               {error}
             </div>
           )}
 
-          <section className="relative overflow-hidden rounded-lg border border-border/60 bg-black/95 shadow-lg">
-            <div className="flex min-h-11 min-w-0 items-center justify-between gap-3 border-b border-white/10 bg-background/95 px-3 py-2 text-foreground">
+          <section className="border-border/60 relative overflow-hidden rounded-lg border bg-black/95 shadow-lg">
+            <div className="bg-background/95 text-foreground flex min-h-11 min-w-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2">
               <div className="flex min-w-0 items-baseline gap-2">
                 <p className="truncate text-sm font-medium">
                   {episodes[selectedEpisode] || `第 ${selectedEpisode + 1} 集`}
@@ -1598,8 +1746,14 @@ export default function UnifiedPlayer() {
                     disabled={!currentVideoUrl}
                     aria-label="复制当前视频链接"
                   >
-                    {copiedVideoUrl ? <Check className="size-4" /> : <Clipboard className="size-4" />}
-                    <span className="hidden sm:inline">{copiedVideoUrl ? '已复制' : '复制链接'}</span>
+                    {copiedVideoUrl ? (
+                      <Check className="size-4" />
+                    ) : (
+                      <Clipboard className="size-4" />
+                    )}
+                    <span className="hidden sm:inline">
+                      {copiedVideoUrl ? '已复制' : '复制链接'}
+                    </span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>复制当前视频链接</TooltipContent>
@@ -1608,14 +1762,16 @@ export default function UnifiedPlayer() {
             <div
               id="player"
               ref={containerRef}
-              className="aspect-video min-h-[180px] w-full bg-black sm:h-[clamp(240px,56vw,74vh)] sm:min-h-[220px] sm:aspect-auto [&_.art-video-player]:!h-full [&_.art-video-player]:!w-full [&_.artplayer-app]:!h-full [&_.artplayer-app]:!w-full [&_video]:!h-full [&_video]:!w-full"
+              className="aspect-video min-h-[180px] w-full bg-black sm:aspect-auto sm:h-[clamp(240px,56vw,74vh)] sm:min-h-[220px] [&_.art-video-player]:!h-full [&_.art-video-player]:!w-full [&_.artplayer-app]:!h-full [&_.artplayer-app]:!w-full [&_video]:!h-full [&_video]:!w-full"
             />
             {seekPreviewOverlay &&
               (playerOverlayContainer
                 ? createPortal(seekPreviewOverlay, playerOverlayContainer)
                 : seekPreviewOverlay)}
             {volumeOverlay &&
-              (playerOverlayContainer ? createPortal(volumeOverlay, playerOverlayContainer) : volumeOverlay)}
+              (playerOverlayContainer
+                ? createPortal(volumeOverlay, playerOverlayContainer)
+                : volumeOverlay)}
             {shouldShowOverlayNotices && (
               <div className="pointer-events-none absolute top-3 right-3 z-30 flex max-w-[min(92vw,420px)] flex-col items-end gap-2">
                 {shouldShowMatchingNotice && (
@@ -1699,10 +1855,12 @@ export default function UnifiedPlayer() {
 
         <aside className="min-w-0 xl:sticky xl:top-20 xl:h-[clamp(240px,56vw,74vh)] xl:min-h-[220px] xl:pr-1">
           {isCmsRoute ? (
-            <section className="space-y-3 rounded-lg border border-border/60 bg-card/55 p-3 md:p-4 xl:h-full xl:min-h-0">
+            <section className="border-border/60 bg-card/55 space-y-3 rounded-lg border p-3 md:p-4 xl:h-full xl:min-h-0">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold">选集</h2>
-                <span className="text-muted-foreground text-xs">共 {detail.episodes.length} 集</span>
+                <span className="text-muted-foreground text-xs">
+                  共 {detail.episodes.length} 集
+                </span>
               </div>
               <PlayerEpisodePanel
                 totalEpisodes={detail.episodes.length}
@@ -1732,11 +1890,13 @@ export default function UnifiedPlayer() {
                   <button
                     type="button"
                     aria-label="展开或收起换源面板"
-                    className="flex min-w-0 w-full items-center justify-between gap-2 px-3 py-3 text-sm font-semibold md:px-4"
+                    className="flex w-full min-w-0 items-center justify-between gap-2 px-3 py-3 text-sm font-semibold md:px-4"
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate">换源</span>
-                      <span className="text-muted-foreground truncate text-xs">{sourceOptions.length} 源</span>
+                      <span className="text-muted-foreground truncate text-xs">
+                        {sourceOptions.length} 源
+                      </span>
                     </span>
                     <ChevronDown
                       className={`size-4 transition-transform ${activeRightPanel === 'source' ? 'rotate-180' : ''}`}
@@ -1746,7 +1906,7 @@ export default function UnifiedPlayer() {
                 <CollapsibleContent
                   className={cn(
                     collapsibleContentClassName,
-                    activeRightPanel === 'source' && 'xl:flex xl:flex-1 xl:min-h-0 xl:flex-col',
+                    activeRightPanel === 'source' && 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col',
                   )}
                 >
                   <ScrollArea className="max-h-44 sm:max-h-56 xl:h-full xl:max-h-none">
@@ -1758,13 +1918,17 @@ export default function UnifiedPlayer() {
                             key={option.sourceCode}
                             size="sm"
                             variant={active ? 'default' : 'secondary'}
-                            className="min-w-0 max-w-full justify-between rounded-full sm:w-auto sm:max-w-[240px]"
+                            className="max-w-full min-w-0 justify-between rounded-full sm:w-auto sm:max-w-[240px]"
                             aria-current={active ? 'true' : undefined}
                             aria-label={`切换到视频源 ${option.sourceName}`}
                             onClick={() => handleSourceChange(option.sourceCode)}
                           >
                             <span className="truncate">{option.sourceName}</span>
-                            {isTmdbRoute && <span className="shrink-0 text-[11px] opacity-70">{option.bestScore}</span>}
+                            {isTmdbRoute && (
+                              <span className="shrink-0 text-[11px] opacity-70">
+                                {option.bestScore}
+                              </span>
+                            )}
                           </Button>
                         )
                       })}
@@ -1773,58 +1937,60 @@ export default function UnifiedPlayer() {
                 </CollapsibleContent>
               </Collapsible>
 
-            {hasSeasonPanel && (
-              <Collapsible
-                open={activeRightPanel === 'season'}
-                onOpenChange={open => setActiveRightPanel(open ? 'season' : null)}
-                className={getPanelClassName('season')}
-              >
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="展开或收起选季面板"
-                    className="flex min-w-0 w-full items-center justify-between gap-2 px-3 py-3 text-sm font-semibold md:px-4"
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate">选季</span>
-                      <span className="text-muted-foreground truncate text-xs">
-                        {tmdbPlayback.seasonOptions.length} 季
-                      </span>
-                    </span>
-                    <ChevronDown
-                      className={`size-4 transition-transform ${activeRightPanel === 'season' ? 'rotate-180' : ''}`}
-                    />
-                  </button>
-                </CollapsibleTrigger>
-                <CollapsibleContent
-                  className={cn(
-                    collapsibleContentClassName,
-                    activeRightPanel === 'season' && 'xl:flex-1 xl:min-h-0',
-                  )}
+              {hasSeasonPanel && (
+                <Collapsible
+                  open={activeRightPanel === 'season'}
+                  onOpenChange={open => setActiveRightPanel(open ? 'season' : null)}
+                  className={getPanelClassName('season')}
                 >
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                    {tmdbPlayback.seasonOptions.map(option => {
-                      const active = option.seasonNumber === tmdbPlayback.selectedSeasonNumber
-                      return (
-                        <Button
-                          key={option.seasonNumber}
-                          size="sm"
-                          variant={active ? 'default' : 'secondary'}
-                          className="min-w-0 max-w-full justify-between rounded-full sm:w-auto sm:max-w-[240px]"
-                          aria-current={active ? 'true' : undefined}
-                          aria-label={`切换到第 ${option.seasonNumber} 季`}
-                          onClick={() => handleSeasonChange(option.seasonNumber)}
-                        >
-                          <span className="truncate">S{option.seasonNumber}</span>
-                          <span className="shrink-0 text-[11px] opacity-70">{option.matchedSourceCount}</span>
-                        </Button>
-                      )
-                    })}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-            {episodes.length > 0 && (
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="展开或收起选季面板"
+                      className="flex w-full min-w-0 items-center justify-between gap-2 px-3 py-3 text-sm font-semibold md:px-4"
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate">选季</span>
+                        <span className="text-muted-foreground truncate text-xs">
+                          {tmdbPlayback.seasonOptions.length} 季
+                        </span>
+                      </span>
+                      <ChevronDown
+                        className={`size-4 transition-transform ${activeRightPanel === 'season' ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent
+                    className={cn(
+                      collapsibleContentClassName,
+                      activeRightPanel === 'season' && 'xl:min-h-0 xl:flex-1',
+                    )}
+                  >
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                      {tmdbPlayback.seasonOptions.map(option => {
+                        const active = option.seasonNumber === tmdbPlayback.selectedSeasonNumber
+                        return (
+                          <Button
+                            key={option.seasonNumber}
+                            size="sm"
+                            variant={active ? 'default' : 'secondary'}
+                            className="max-w-full min-w-0 justify-between rounded-full sm:w-auto sm:max-w-[240px]"
+                            aria-current={active ? 'true' : undefined}
+                            aria-label={`切换到第 ${option.seasonNumber} 季`}
+                            onClick={() => handleSeasonChange(option.seasonNumber)}
+                          >
+                            <span className="truncate">S{option.seasonNumber}</span>
+                            <span className="shrink-0 text-[11px] opacity-70">
+                              {option.matchedSourceCount}
+                            </span>
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+              {episodes.length > 0 && (
                 <Collapsible
                   open={activeRightPanel === 'episode'}
                   onOpenChange={open => setActiveRightPanel(open ? 'episode' : null)}
@@ -1834,7 +2000,7 @@ export default function UnifiedPlayer() {
                     <button
                       type="button"
                       aria-label="展开或收起选集面板"
-                      className="flex min-w-0 w-full items-center justify-between gap-2 px-3 py-3 text-sm font-semibold md:px-4"
+                      className="flex w-full min-w-0 items-center justify-between gap-2 px-3 py-3 text-sm font-semibold md:px-4"
                     >
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="shrink-0">选集</span>
@@ -1850,7 +2016,7 @@ export default function UnifiedPlayer() {
                   <CollapsibleContent
                     className={cn(
                       collapsibleContentClassName,
-                      activeRightPanel === 'episode' && 'xl:flex-1 xl:min-h-0',
+                      activeRightPanel === 'episode' && 'xl:min-h-0 xl:flex-1',
                     )}
                   >
                     <div className={activeRightPanel === 'episode' ? 'xl:h-full' : undefined}>
@@ -1873,7 +2039,7 @@ export default function UnifiedPlayer() {
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
-            )}
+              )}
             </div>
           )}
         </aside>

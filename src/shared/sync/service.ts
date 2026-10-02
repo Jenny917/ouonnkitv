@@ -54,6 +54,17 @@ function save() {
   // Preserve edits made by another tab since our last storage event.
   const disk = readJournal(prefix + owner)
   for (const [key, row] of Object.entries(disk)) {
+    const current = journal[key]
+    if (
+      row.kind === 'history' &&
+      !row.pending &&
+      current &&
+      !current.pending &&
+      current.value &&
+      typeof current.value === 'object' &&
+      'playbackLeaseId' in current.value
+    )
+      continue
     if (!journal[key] || newer(row, journal[key])) journal[key] = row
   }
   localStorage.setItem(prefix + owner, JSON.stringify(journal))

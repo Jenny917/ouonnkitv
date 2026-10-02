@@ -85,6 +85,28 @@ afterEach(() => {
 })
 
 describe('cloud sync lifecycle', () => {
+  it('replaces stale progress on disk with the server playback owner after a rejected upload', async () => {
+    mocks.authCallback!('SIGNED_IN', session('alice'))
+    const oldLease = '00000000-0000-4000-8000-000000000001'
+    const newLease = '00000000-0000-4000-8000-000000000002'
+    useViewingHistoryStore
+      .getState()
+      .addViewingHistory({ ...item('movie'), playbackLeaseId: oldLease, playbackPosition: 90 })
+    const remote: SyncRecord = {
+      kind: 'history',
+      item_key: 'cms::source::movie::0',
+      value: { ...item('movie'), playbackLeaseId: newLease, playbackPosition: 42 },
+      modified_at: 100,
+      mutation_id: 'server',
+      deleted: false,
+    }
+    mocks.range.mockResolvedValue({ data: [remote], error: null })
+    await syncNow()
+    expect(useViewingHistoryStore.getState().viewingHistory[0].playbackPosition).toBe(42)
+    const cache = JSON.parse(localStorage.getItem('ouonnki-cloud-v1:alice')!)
+    expect(cache[recordKey(remote)].value.playbackLeaseId).toBe(newLease)
+    expect(cache[recordKey(remote)].pending).toBe(false)
+  })
   it('restores guest data on sign-out and isolates account caches', async () => {
     mocks.authCallback!('SIGNED_IN', session('alice'))
     useViewingHistoryStore.getState().addViewingHistory(item('alice-private'))
