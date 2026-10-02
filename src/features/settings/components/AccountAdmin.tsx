@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { History, Search, Users } from 'lucide-react'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
+import { Checkbox } from '@/shared/components/ui/checkbox'
 import { ConfirmModal } from '@/shared/components/common/ConfirmModal'
 import { syncClient } from '@/shared/sync/client'
 import { SettingsSection } from './common'
@@ -32,6 +33,7 @@ const formatTime = (value?: string | null) => (value ? new Date(value).toLocaleS
 const actionLabels: Record<string, string> = {
   create: '创建账号',
   set_enabled: '更改状态',
+  set_nsfw: '更改 NSFW 权限',
   reset_password: '重置密码',
   force_logout: '强制退出',
   delete: '删除账号',
@@ -43,6 +45,7 @@ export default function AccountAdmin() {
   const [search, setSearch] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [allowNsfw, setAllowNsfw] = useState(false)
   const [resetId, setResetId] = useState<string | null>(null)
   const [resetPassword, setResetPassword] = useState('')
   const [confirm, setConfirm] = useState<{
@@ -72,6 +75,7 @@ export default function AccountAdmin() {
     try {
       await requestAccounts(body)
       setPassword('')
+      setAllowNsfw(false)
       setResetPassword('')
       setResetId(null)
       setConfirm(null)
@@ -95,7 +99,10 @@ export default function AccountAdmin() {
           className="flex flex-col gap-3 sm:flex-row sm:items-end"
           onSubmit={event => {
             event.preventDefault()
-            void run({ action: 'create', username, password }, '账号已创建。')
+            void run(
+              { action: 'create', username, password, allow_nsfw: allowNsfw },
+              '账号已创建。',
+            )
           }}
         >
           <label className="space-y-1 text-sm">
@@ -121,6 +128,13 @@ export default function AccountAdmin() {
               value={password}
               onChange={event => setPassword(event.target.value)}
             />
+          </label>
+          <label className="flex h-9 items-center gap-2 text-sm">
+            <Checkbox
+              checked={allowNsfw}
+              onCheckedChange={checked => setAllowNsfw(checked === true)}
+            />
+            允许 NSFW
           </label>
           <Button type="submit" disabled={busy}>
             创建用户
@@ -166,9 +180,31 @@ export default function AccountAdmin() {
                   {formatTime(account.last_sign_in_at)}
                 </p>
                 <p className="text-muted-foreground text-xs">近期设备：{account.devices.length}</p>
+                <p className="text-muted-foreground text-xs">
+                  NSFW：{account.role === 'admin' || account.allow_nsfw ? '允许' : '不允许'}
+                </p>
               </div>
               {account.role === 'user' && (
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(
+                        {
+                          action: 'set-nsfw',
+                          id: account.id,
+                          allow_nsfw: !account.allow_nsfw,
+                        },
+                        account.allow_nsfw
+                          ? 'NSFW 权限已关闭，现有会话已退出。'
+                          : 'NSFW 权限已开放，需要重新登录。',
+                      )
+                    }
+                  >
+                    {account.allow_nsfw ? '关闭 NSFW' : '开放 NSFW'}
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"

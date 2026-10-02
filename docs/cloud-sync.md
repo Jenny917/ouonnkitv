@@ -10,6 +10,7 @@ An administrator creates usernames and passwords. Users sign in once and their f
    - [Managed accounts](../supabase/migrations/202610010002_managed_accounts.sql)
    - [Provisioning fix](../supabase/migrations/202610010003_account_provisioning_fix.sql)
    - [Admin dashboard](../supabase/migrations/202610020001_admin_dashboard.sql)
+   - [NSFW source access](../supabase/migrations/202610020002_nsfw_access.sql)
 3. Under Supabase Authentication, keep the email/password provider enabled but **disable Allow new users to sign up**. Keep multiple simultaneous sessions allowed. The application uses internal, automatically confirmed email-shaped identifiers for Supabase Auth; users only enter usernames, and no mailbox or SMTP is needed. The database trigger also rejects accounts not provisioned by the server admin API.
 4. Configure the Vercel project variables:
 
@@ -18,8 +19,10 @@ An administrator creates usernames and passwords. Users sign in once and their f
    | `OKI_SUPABASE_URL`                                            | Supabase project URL                           |
    | `OKI_SUPABASE_PUBLISHABLE_KEY` **or** `OKI_SUPABASE_ANON_KEY` | Public publishable/legacy anon key             |
    | `SUPABASE_SERVICE_ROLE_KEY` **or** `SUPABASE_SECRET_KEY`      | Supabase server secret/legacy service-role key |
+   | `OKI_INITIAL_VIDEO_SOURCES`                                   | Public sources available to every account      |
+   | `NSFW_VIDEO_SOURCES`                                          | Private NSFW sources returned by the server    |
 
-   The server secret must **not** have an `OKI_`, `NEXT_PUBLIC_`, or other public prefix. It is only read by the Vercel `/api/accounts` function. Never paste it into the app or commit it. Remove the obsolete `OKI_ACCESS_PASSWORD` variable; choose a new admin password, because the old shared password was part of the browser configuration.
+   The server secret and `NSFW_VIDEO_SOURCES` must **not** have an `OKI_`, `NEXT_PUBLIC_`, or other public prefix. They are only read by Vercel functions. Never paste them into the app or commit them. `NSFW_VIDEO_SOURCES` uses the same JSON array or remote-JSON URL format as `OKI_INITIAL_VIDEO_SOURCES`. Remove the obsolete `OKI_ACCESS_PASSWORD` variable; choose a new admin password, because the old shared password was part of the browser configuration.
 
 5. Bootstrap the first admin with the script below, then redeploy Vercel.
 
@@ -27,7 +30,7 @@ Missing Supabase configuration shows setup guidance on the login screen; it does
 
 ## Create the first admin
 
-After running both migrations, create a **local, private** `.env.admin` file (gitignored):
+After running all migrations, create a **local, private** `.env.admin` file (gitignored):
 
 ```dotenv
 OKI_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
@@ -50,11 +53,12 @@ The script makes a one-time remote API call; it does not install a local databas
 
 1. Sign in with the admin username and password.
 2. Open **Settings → Personal configuration (个人配置) → User management (用户管理)**.
-3. Create user `a` and a password of at least 10 characters. Usernames are case-insensitive, 1–32 characters, using letters, numbers, `_` or `-`, starting with a letter/number.
+3. Create user `a` and a password of at least 10 characters. Usernames are case-insensitive, 1–32 characters, using letters, numbers, `_` or `-`, starting with a letter/number. Select **Allow NSFW** only for accounts that should receive the private source list.
 4. User `a` signs in on a phone and laptop. Both use the same account data automatically. User `b` gets a separate collection. Admins manage account metadata; their app session does not receive another user's favorites or history.
 5. Search users and review their last login and recently active browser/device sessions. Activity updates while an authenticated app is open.
-6. Reset a user's password, force logout on every device, disable the account, or permanently delete the account and its synced data. Destructive actions require confirmation. Database authorization immediately blocks old sessions. Password reset requires fresh login on all devices; re-enabling an account does not restore its old sessions. Open apps check account status every 30 seconds and on focus/reconnect.
-7. Review the recent administrator audit log. It records successful account creation, status changes, password resets, forced logouts and deletions without storing passwords.
+6. Enable or disable a user's NSFW access. The change invalidates existing sessions, so the user must sign in again; the app then adds or removes the server-issued NSFW sources locally.
+7. Reset a user's password, force logout on every device, disable the account, or permanently delete the account and its synced data. Destructive actions require confirmation. Database authorization immediately blocks old sessions. Password reset requires fresh login on all devices; re-enabling an account does not restore its old sessions. Open apps check account status every 30 seconds and on focus/reconnect.
+8. Review the recent administrator audit log. It records successful account creation, NSFW permission changes, status changes, password resets, forced logouts and deletions without storing passwords.
 
 There is no automatic import of old device data when signing in. If desired, the user can choose **Import this device's original favorites and history (导入此设备原有收藏与历史)**. Existing cloud records, including deletions, win over these imports. Verify that this is the user's own collection before importing on a shared device.
 

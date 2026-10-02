@@ -6,9 +6,11 @@ import { OkiLogo } from '@/shared/components/icons'
 import { startAuth, useAuthStore } from '@/shared/store/authStore'
 import { startSync } from '@/shared/sync/service'
 import { syncClient } from '@/shared/sync/client'
+import { useApiStore } from '@/shared/store/apiStore'
 
 export default function AuthGuard({ children }: { children: ReactNode }) {
   const { account, initialized, error, login } = useAuthStore()
+  const clearRestrictedSources = useApiStore(state => state.clearRestrictedSources)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -21,6 +23,9 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
       stopSync()
     }
   }, [])
+  useEffect(() => {
+    if (initialized && !account) clearRestrictedSources()
+  }, [account, clearRestrictedSources, initialized])
   if (account) return <>{children}</>
   return (
     <div className="bg-background flex min-h-dvh flex-col md:flex-row">

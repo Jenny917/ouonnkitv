@@ -71,6 +71,7 @@ beforeEach(() => {
             username: value.user.id,
             role: 'user',
             enabled: true,
+            allow_nsfw: false,
             created_at: '2026-10-01',
             devices: [],
           }

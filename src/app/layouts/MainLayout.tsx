@@ -37,14 +37,14 @@ export default function MainLayout() {
     const initialContentConfigId = getInitialContentConfigId()
     const needsInitialization =
       localStorage.getItem('initialContentConfigId') !== initialContentConfigId
-    if (needsInitialization) {
-      const initialize = async () => {
-        await initializeEnvSources()
+    const initialize = async () => {
+      await initializeEnvSources()
+      if (needsInitialization) {
         await initializeEnvSubscriptions()
         localStorage.setItem('initialContentConfigId', initialContentConfigId)
       }
-      void initialize()
     }
+    void initialize()
   }, [initializeEnvSources, initializeEnvSubscriptions])
 
   // 版本更新检查

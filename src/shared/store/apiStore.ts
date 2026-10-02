@@ -11,7 +11,7 @@ import {
   getEnabledSources,
   importSources,
 } from '@ouonnki/cms-core/source'
-import { getInitialVideoSources } from '@/shared/config/api.config'
+import { getAuthorizedNsfwVideoSources, getInitialVideoSources } from '@/shared/config/api.config'
 import { DEFAULT_SETTINGS } from '@/shared/config/settings.config'
 import { v4 as uuidv4 } from 'uuid'
 import { useSettingStore } from './settingStore'
@@ -41,7 +41,8 @@ interface ApiActions {
   // 取消全选
   deselectAllAPIs: () => void
   // 初始化环境变量中的视频源
-  initializeEnvSources: () => void
+  initializeEnvSources: () => Promise<void>
+  clearRestrictedSources: () => void
   // 批量导入视频源
   importVideoAPIs: (apis: VideoSource[]) => void
   // 获取选中的视频源
@@ -147,20 +148,34 @@ export const useApiStore = create<ApiStore>()(
         },
 
         initializeEnvSources: async () => {
-          const envSources = await getInitialVideoSources()
+          const [envSources, nsfwSources] = await Promise.all([
+            getInitialVideoSources(),
+            getAuthorizedNsfwVideoSources(),
+          ])
           set(state => {
             if (typeof INITIAL_CONFIG?.adFilteringEnabled === 'boolean') {
               state.adFilteringEnabled = INITIAL_CONFIG.adFilteringEnabled
             }
-            if (envSources.length > 0) {
-              const store = toSourceStore(state)
-              const { store: newStore } = importSources(store, envSources, {
+            const withoutRestrictedSources = state.videoAPIs.filter(
+              source => !source.id.startsWith('nsfw_env_'),
+            )
+            if (envSources.length > 0 || nsfwSources.length > 0) {
+              const store = toSourceStore({ ...state, videoAPIs: withoutRestrictedSources })
+              const { store: newStore } = importSources(store, [...envSources, ...nsfwSources], {
                 defaultTimeout: useSettingStore.getState().network.defaultTimeout,
                 defaultRetry: useSettingStore.getState().network.defaultRetry,
                 skipInvalid: true,
               })
               state.videoAPIs = fromSourceStore(newStore)
+            } else {
+              state.videoAPIs = withoutRestrictedSources
             }
+          })
+        },
+
+        clearRestrictedSources: () => {
+          set(state => {
+            state.videoAPIs = state.videoAPIs.filter(source => !source.id.startsWith('nsfw_env_'))
           })
         },
 

@@ -49,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       let accountQuery = admin
         .from('user_accounts')
-        .select('id,username,role,enabled,created_at')
+        .select('id,username,role,enabled,allow_nsfw,created_at')
         .order('created_at')
         .order('id')
         .range(offset, offset + 49)
@@ -114,6 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         username: action.username,
         role: 'user',
         enabled: true,
+        allow_nsfw: action.allow_nsfw,
       })
       if (profileError) {
         await admin.auth.admin.deleteUser(created.user.id)
@@ -131,7 +132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else {
       const { data: target, error: targetError } = await admin
         .from('user_accounts')
-        .select('id,role,username')
+        .select('id,role,username,allow_nsfw')
         .eq('id', action.id)
         .maybeSingle()
       if (targetError) throw targetError
@@ -140,10 +141,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(403).json({ error: '此操作仅适用于普通用户账号' })
       }
       const targetUsername = target.username
-      const { error: revokeError } = await admin.rpc('invalidate_account_sessions', {
-        target_id: action.id,
-        new_enabled: action.action === 'set-enabled' ? action.enabled : null,
-      })
+      const { error: revokeError } =
+        action.action === 'set-nsfw'
+          ? await admin.rpc('set_account_nsfw', {
+              target_id: action.id,
+              new_allow_nsfw: action.allow_nsfw,
+            })
+          : await admin.rpc('invalidate_account_sessions', {
+              target_id: action.id,
+              new_enabled: action.action === 'set-enabled' ? action.enabled : null,
+            })
       if (revokeError) throw revokeError
       if (action.action === 'reset-password') {
         const { error } = await admin.auth.admin.updateUserById(action.id, {
@@ -159,15 +166,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { error } = await admin.auth.admin.deleteUser(action.id)
         if (error) return res.status(400).json({ error: '删除账号失败，请重试' })
       }
-      const auditAction =
-        action.action === 'set-enabled' ? 'set_enabled' : action.action.replace('-', '_')
+      const auditAction = action.action.replace('-', '_')
       await admin.from('admin_audit_log').insert({
         actor_id: profile.data.id,
         actor_username: profile.data.username,
         target_id: action.id,
         target_username: targetUsername,
         action: auditAction,
-        details: action.action === 'set-enabled' ? { enabled: action.enabled } : {},
+        details:
+          action.action === 'set-enabled'
+            ? { enabled: action.enabled }
+            : action.action === 'set-nsfw'
+              ? { allow_nsfw: action.allow_nsfw }
+              : {},
       })
     }
     return res.status(200).json({ ok: true })

@@ -48,6 +48,7 @@ import type { VideoApi } from '@/shared/types/video'
 import { INITIAL_CONFIG, type VideoSourceConfig } from './initialConfig'
 import { DEFAULT_SETTINGS } from './settings.config'
 import { getPublicEnv } from './runtimeEnv'
+import { syncClient } from '@/shared/sync/client'
 
 type VideoSourceInput = VideoSourceConfig[] | string | undefined
 
@@ -123,4 +124,23 @@ export const getInitialVideoSources = async (): Promise<VideoApi[]> => {
     return loadVideoSources(INITIAL_CONFIG.videoSources)
   }
   return loadVideoSources(getPublicEnv('OKI_INITIAL_VIDEO_SOURCES'))
+}
+
+export const getAuthorizedNsfwVideoSources = async (): Promise<VideoApi[]> => {
+  if (!syncClient) return []
+  try {
+    const { data } = await syncClient.auth.getSession()
+    if (!data.session) return []
+    const response = await fetch('/api/nsfw-sources', {
+      headers: { Authorization: `Bearer ${data.session.access_token}` },
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const payload: unknown = await response.json()
+    if (!payload || typeof payload !== 'object' || !('sources' in payload)) return []
+    const sources = (payload as { sources?: unknown }).sources
+    return Array.isArray(sources) ? parseVideoSources(sources as VideoSourceConfig[]) : []
+  } catch (error) {
+    console.warn('无法取得账号的 NSFW 视频源:', error)
+    return []
+  }
 }

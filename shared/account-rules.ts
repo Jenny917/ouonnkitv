@@ -11,6 +11,7 @@ export const accountSchema = z.object({
   username: usernameSchema,
   role: z.enum(['admin', 'user']),
   enabled: z.boolean(),
+  allow_nsfw: z.boolean().optional().default(false),
   created_at: z.string(),
   last_sign_in_at: z.string().nullable().optional(),
   devices: z
@@ -31,8 +32,14 @@ export const accountEmail = (username: string) =>
   `${usernameSchema.parse(username)}@users.ouonnki.invalid`
 
 export const adminActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('create'), username: usernameSchema, password: passwordSchema }),
+  z.object({
+    action: z.literal('create'),
+    username: usernameSchema,
+    password: passwordSchema,
+    allow_nsfw: z.boolean().optional().default(false),
+  }),
   z.object({ action: z.literal('set-enabled'), id: z.string().uuid(), enabled: z.boolean() }),
+  z.object({ action: z.literal('set-nsfw'), id: z.string().uuid(), allow_nsfw: z.boolean() }),
   z.object({
     action: z.literal('reset-password'),
     id: z.string().uuid(),

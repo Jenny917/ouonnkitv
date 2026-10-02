@@ -158,6 +158,7 @@ describe('managed account API', () => {
       username: 'alice',
       role: 'user',
       enabled: true,
+      allow_nsfw: false,
     })
     expect(mocks.insertAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'create', target_username: 'alice' }),
@@ -187,6 +188,17 @@ describe('managed account API', () => {
       target_id: userId,
       new_enabled: false,
     })
+  })
+  it('changes NSFW access and invalidates existing sessions', async () => {
+    const res = await request({ action: 'set-nsfw', id: userId, allow_nsfw: true })
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(mocks.invalidate).toHaveBeenCalledWith('set_account_nsfw', {
+      target_id: userId,
+      new_allow_nsfw: true,
+    })
+    expect(mocks.insertAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'set_nsfw', details: { allow_nsfw: true } }),
+    )
   })
   it('forces logout for every device and records who performed it', async () => {
     const res = await request({ action: 'force-logout', id: userId })
