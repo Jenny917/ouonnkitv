@@ -76,7 +76,7 @@ export default function SideBar({
             icon: Settings,
           },
         ]
-      : [],
+      : [{ title: '播放设置', url: '/settings/playback', icon: Settings }],
   }
   // 获取版本信息
   const { currentVersion } = useVersionStore()

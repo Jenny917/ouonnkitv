@@ -151,11 +151,7 @@ const router = createBrowserRouter([
       },
       {
         path: 'settings',
-        element: (
-          <AdminOnly>
-            <SettingsLayout />
-          </AdminOnly>
-        ),
+        element: <SettingsLayout />,
         children: [
           { index: true, element: <Navigate to="source" replace /> },
           {

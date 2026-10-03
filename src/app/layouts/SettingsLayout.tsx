@@ -1,4 +1,5 @@
-import { useLocation, useNavigate } from 'react-router'
+import { Navigate, useLocation, useNavigate } from 'react-router'
+import { useAuthStore } from '@/shared/store/authStore'
 import { cn } from '@/shared/lib'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
@@ -79,10 +80,12 @@ const settingsModules = [
 export default function SettingsLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const isAdmin = useAuthStore(state => state.account?.role === 'admin')
+  const visibleModules = settingsModules.filter(module => isAdmin || module.id === 'playback')
   const activeModule =
-    settingsModules.find(module => location.pathname.startsWith(module.path)) || settingsModules[0]
+    visibleModules.find(module => location.pathname.startsWith(module.path)) || visibleModules[0]
 
-  const tabOptions = settingsModules.map(module => ({
+  const tabOptions = visibleModules.map(module => ({
     key: module.id,
     label: (
       <>
@@ -92,6 +95,10 @@ export default function SettingsLayout() {
     ),
     indicatorClassName: module.dotClass,
   }))
+
+  if (!isAdmin && location.pathname !== '/settings/playback') {
+    return <Navigate to="/settings/playback" replace />
+  }
 
   return (
     <div className="min-h-[90vh] pb-8">
@@ -118,7 +125,7 @@ export default function SettingsLayout() {
                 options={tabOptions}
                 activeKey={activeModule.id}
                 onChange={nextId => {
-                  const targetModule = settingsModules.find(module => module.id === nextId)
+                  const targetModule = visibleModules.find(module => module.id === nextId)
                   if (targetModule && targetModule.path !== location.pathname) {
                     navigate(targetModule.path)
                   }

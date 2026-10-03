@@ -52,7 +52,7 @@ The script makes a one-time remote API call; it does not install a local databas
 
 ## Admin and user flow
 
-All signed-in accounts can open **My account (我的账号)** from the top-right account menu or sidebar, including users whose Settings entry is hidden. This page shows sync status and the last sync time, supports manual sync and importing the device's original collection, and provides logout for the current device.
+All signed-in accounts can open **My account (我的账号)** from the top-right account menu or sidebar. This page shows sync status and the last sync time, supports manual sync and importing the device's original collection, and provides logout for the current device. All accounts can also access **Playback settings (播放设置)**; ordinary users have a direct sidebar entry and see only the playback tab. Other settings pages remain administrator-only, including when accessed by URL.
 
 The same page lets users change their own password by entering the current password and confirming a new password of 10–128 characters. The Vercel `/api/account-password` function verifies the live account and current password using a temporary Supabase session, updates only that user's password, and disposes the temporary session. No new database migration or environment variable is required for this page.
 
