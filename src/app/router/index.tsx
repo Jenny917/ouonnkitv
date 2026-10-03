@@ -10,6 +10,7 @@ import SettingsLayout from '@/app/layouts/SettingsLayout'
 // Auth
 const AuthGuard = lazy(() => import('@/shared/components/AuthGuard'))
 const AccountView = lazy(() => import('@/features/auth/AccountView'))
+const AdminView = lazy(() => import('@/features/auth/AdminView'))
 
 // Views (lazy loaded from features)
 const HomeView = lazy(() => import('@/features/home/views/HomeView'))
@@ -66,6 +67,16 @@ const router = createBrowserRouter([
     path: '/',
     element: <MainLayout />,
     children: [
+      {
+        path: 'admin',
+        element: (
+          <AdminOnly>
+            <SuspenseWrapper>
+              <AdminView />
+            </SuspenseWrapper>
+          </AdminOnly>
+        ),
+      },
       {
         path: 'account',
         element: (

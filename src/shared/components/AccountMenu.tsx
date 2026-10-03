@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router'
-import { Cloud, KeyRound, LogOut, UserRound } from 'lucide-react'
+import { Cloud, KeyRound, LogOut, UserRound, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from './ui/button'
 import {
@@ -48,6 +48,14 @@ export default function AccountMenu() {
             修改密码
           </NavLink>
         </DropdownMenuItem>
+        {account.role === 'admin' && (
+          <DropdownMenuItem asChild>
+            <NavLink to="/admin">
+              <Users />
+              管理员中心
+            </NavLink>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={busy}

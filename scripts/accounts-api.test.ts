@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   updateUser: vi.fn(),
   deleteUser: vi.fn(),
   listUsers: vi.fn(),
+  getUser: vi.fn(),
+  range: vi.fn(),
+  filter: vi.fn(),
   invalidate: vi.fn(),
   target: vi.fn(),
   list: vi.fn(),
@@ -41,11 +44,16 @@ beforeEach(() => {
     data: { users: [{ id: adminId, last_sign_in_at: '2026-10-02T01:00:00Z' }] },
     error: null,
   })
+  mocks.getUser
+    .mockReset()
+    .mockResolvedValue({ data: { user: { last_sign_in_at: '2026-10-02T01:00:00Z' } }, error: null })
+  mocks.range.mockReset()
+  mocks.filter.mockReset()
   mocks.invalidate.mockReset().mockResolvedValue({ error: null })
   mocks.target
     .mockReset()
     .mockResolvedValue({ data: { id: userId, role: 'user', username: 'alice' }, error: null })
-  mocks.list.mockReset().mockResolvedValue({ data: [profile], error: null })
+  mocks.list.mockReset().mockResolvedValue({ data: [profile], count: 1, error: null })
   mocks.devices.mockReset().mockResolvedValue({
     data: [
       {
@@ -59,6 +67,33 @@ beforeEach(() => {
   })
   mocks.insertProfile.mockReset().mockResolvedValue({ error: null })
   mocks.insertAudit.mockReset().mockResolvedValue({ error: null })
+  function query(table: string) {
+    const chain = {
+      select: () => chain,
+      order: () => chain,
+      eq: (...args: unknown[]) => {
+        mocks.filter(...args)
+        return chain
+      },
+      or: (...args: unknown[]) => {
+        mocks.filter(...args)
+        return chain
+      },
+      ilike: (...args: unknown[]) => {
+        mocks.filter(...args)
+        return chain
+      },
+      range: (...args: unknown[]) => {
+        mocks.range(table, ...args)
+        return chain
+      },
+      maybeSingle: mocks.target,
+      insert: table === 'admin_audit_log' ? mocks.insertAudit : mocks.insertProfile,
+      then: (resolve: (value: unknown) => void, reject: (error: unknown) => void) =>
+        (table === 'account_devices' ? mocks.devices() : mocks.list()).then(resolve, reject),
+    }
+    return chain
+  }
   mocks.createClient.mockReset().mockImplementation((_url, key) =>
     key === 'public-key'
       ? { rpc: mocks.profile }
@@ -69,33 +104,19 @@ beforeEach(() => {
               updateUserById: mocks.updateUser,
               deleteUser: mocks.deleteUser,
               listUsers: mocks.listUsers,
+              getUserById: mocks.getUser,
             },
           },
           rpc: mocks.invalidate,
-          from: (table: string) =>
-            table === 'admin_audit_log'
-              ? { insert: mocks.insertAudit }
-              : table === 'account_devices'
-                ? {
-                    select: () => ({
-                      in: () => ({ order: mocks.devices }),
-                    }),
-                  }
-                : {
-                    insert: mocks.insertProfile,
-                    select: () => ({
-                      eq: () => ({ maybeSingle: mocks.target }),
-                      order: () => ({ order: () => ({ range: mocks.list }) }),
-                    }),
-                  },
+          from: query,
         },
   )
 })
 
-async function request(body?: unknown, authorization: string | null = 'Bearer token') {
+async function request(body?: unknown, authorization: string | null = 'Bearer token', query = {}) {
   const req = {
     method: body ? 'POST' : 'GET',
-    query: {},
+    query,
     body,
     headers: { ...(authorization ? { authorization } : {}), 'content-type': 'application/json' },
   } as unknown as VercelRequest
@@ -120,24 +141,62 @@ describe('managed account API', () => {
     expect(mocks.createUser).not.toHaveBeenCalled()
     expect(mocks.createClient.mock.calls.every(call => call[1] === 'public-key')).toBe(true)
   })
-  it('lists last login and recent device activity for the dashboard', async () => {
+  it('paginates summaries without loading devices or the Auth directory', async () => {
     const res = await request()
     expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.json).toHaveBeenCalledWith({
-      accounts: [
-        expect.objectContaining({
-          id: adminId,
-          last_sign_in_at: '2026-10-02T01:00:00Z',
-          devices: [
-            expect.objectContaining({
-              label: 'Chrome · Windows',
-              last_seen_at: '2026-10-02T01:00:00Z',
-            }),
-          ],
-        }),
-      ],
-      nextOffset: null,
+    expect(res.json).toHaveBeenCalledWith({ accounts: [profile], total: 1 })
+    expect(mocks.range).toHaveBeenCalledWith('user_accounts', 0, 19)
+    expect(mocks.devices).not.toHaveBeenCalled()
+    expect(mocks.listUsers).not.toHaveBeenCalled()
+    expect(mocks.getUser).not.toHaveBeenCalled()
+  })
+  it('applies search and permission filters to the requested database page', async () => {
+    await request(undefined, 'Bearer token', {
+      offset: '20',
+      search: 'a_b',
+      enabled: 'false',
+      nsfw: 'false',
     })
+    expect(mocks.range).toHaveBeenCalledWith('user_accounts', 20, 39)
+    expect(mocks.filter).toHaveBeenCalledWith('username', '%a\\_b%')
+    expect(mocks.filter).toHaveBeenCalledWith('enabled', false)
+    expect(mocks.filter).toHaveBeenCalledWith('role', 'user')
+    expect(mocks.filter).toHaveBeenCalledWith('allow_nsfw', false)
+  })
+  it('loads only the selected account and requested device page', async () => {
+    const res = await request(undefined, 'Bearer token', { id: userId, offset: '20' })
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(mocks.getUser).toHaveBeenCalledWith(userId)
+    expect(mocks.filter).toHaveBeenCalledWith('user_id', userId)
+    expect(mocks.range).toHaveBeenCalledWith('account_devices', 20, 39)
+    expect(mocks.listUsers).not.toHaveBeenCalled()
+  })
+  it('rejects invalid offsets, filters and detail ids', async () => {
+    for (const query of [
+      { offset: '-1' },
+      { offset: '1.5' },
+      { enabled: 'yes' },
+      { nsfw: 'all' },
+      { id: 'bad' },
+    ]) {
+      expect((await request(undefined, 'Bearer token', query)).status).toHaveBeenCalledWith(400)
+    }
+    expect(mocks.devices).not.toHaveBeenCalled()
+    expect(mocks.list).not.toHaveBeenCalled()
+  })
+  it('returns 404 for a deleted account without looking up its devices', async () => {
+    mocks.target.mockResolvedValue({ data: null, error: null })
+    expect((await request(undefined, 'Bearer token', { id: userId })).status).toHaveBeenCalledWith(
+      404,
+    )
+    expect(mocks.devices).not.toHaveBeenCalled()
+  })
+  it('paginates audit independently from accounts', async () => {
+    mocks.list.mockResolvedValue({ data: [], count: 20, error: null })
+    const res = await request(undefined, 'Bearer token', { view: 'audit', offset: '20' })
+    expect(res.json).toHaveBeenCalledWith({ audit: [], total: 20 })
+    expect(mocks.range).toHaveBeenCalledWith('admin_audit_log', 20, 39)
+    expect(mocks.getUser).not.toHaveBeenCalled()
   })
   it('creates normalized usernames with server-controlled role metadata', async () => {
     const res = await request({

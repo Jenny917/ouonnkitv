@@ -14,7 +14,7 @@ import {
 } from '@/shared/components/ui/sidebar'
 import { NavLink } from 'react-router'
 import { motion } from 'framer-motion'
-import { Home, Search, Star, History, Settings, UserRound } from 'lucide-react'
+import { Home, Search, Star, History, Settings, UserRound, Users } from 'lucide-react'
 import { OkiLogo } from '@/shared/components/icons'
 import { useVersionStore } from '../store'
 import { useAuthStore } from '@/shared/store/authStore'
@@ -159,6 +159,20 @@ export default function SideBar({
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={location.pathname === '/admin'}
+                tooltip="管理员中心"
+              >
+                <NavLink to="/admin" onClick={handleNavLinkClick}>
+                  <Users />
+                  <span>管理员中心</span>
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           {items.footer.map(item => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton asChild>

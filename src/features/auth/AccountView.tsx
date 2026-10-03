@@ -55,7 +55,7 @@ export default function AccountView() {
         title="我的账号"
         description="管理你的密码，查看收藏与观看进度的同步状态。"
       >
-        <CloudSync showAdmin={false} />
+        <CloudSync />
         <SettingsSection
           title="修改密码"
           icon={<KeyRound className="size-4" />}

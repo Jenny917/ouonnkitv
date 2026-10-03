@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
 import { accountEmail, accountSchema, adminActionSchema } from '../shared/account-rules.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -31,66 +32,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     if (req.method === 'GET') {
       const offset = Number(req.query.offset ?? 0)
+      const pageSize = 20
       const search =
         typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : ''
-      if (!Number.isSafeInteger(offset) || offset < 0)
+      if (
+        !Number.isSafeInteger(offset) ||
+        offset < 0 ||
+        offset > Number.MAX_SAFE_INTEGER - pageSize
+      )
         return res.status(400).json({ error: 'Invalid offset' })
+      if (req.query.id !== undefined) {
+        const id = z.string().uuid().safeParse(req.query.id)
+        if (!id.success) return res.status(400).json({ error: 'Invalid account id' })
+        const { data: account, error } = await admin
+          .from('user_accounts')
+          .select('id,username,role,enabled,allow_nsfw,created_at')
+          .eq('id', id.data)
+          .maybeSingle()
+        if (error) throw error
+        if (!account) return res.status(404).json({ error: '账号不存在或已删除' })
+        const [devices, authUser] = await Promise.all([
+          admin
+            .from('account_devices')
+            .select('label,first_seen_at,last_seen_at', { count: 'exact' })
+            .eq('user_id', id.data)
+            .order('last_seen_at', { ascending: false })
+            .order('session_id')
+            .range(offset, offset + pageSize - 1),
+          admin.auth.admin.getUserById(id.data),
+        ])
+        if (devices.error) throw devices.error
+        if (authUser.error) throw authUser.error
+        return res.status(200).json({
+          account: {
+            ...account,
+            last_sign_in_at: authUser.data.user.last_sign_in_at ?? null,
+            devices: devices.data ?? [],
+          },
+          total: devices.count ?? 0,
+        })
+      }
       if (req.query.view === 'audit') {
-        const { data, error } = await admin
+        const { data, error, count } = await admin
           .from('admin_audit_log')
-          .select('id,actor_username,target_username,action,details,created_at')
+          .select('id,actor_username,target_username,action,details,created_at', { count: 'exact' })
           .order('created_at', { ascending: false })
           .order('id', { ascending: false })
-          .range(offset, offset + 49)
+          .range(offset, offset + pageSize - 1)
         if (error) throw error
-        return res
-          .status(200)
-          .json({ audit: data, nextOffset: data?.length === 50 ? offset + 50 : null })
+        return res.status(200).json({ audit: data, total: count ?? 0 })
       }
+      const enabled = req.query.enabled
+      const nsfw = req.query.nsfw
+      if (
+        [enabled, nsfw].some(value => value !== undefined && value !== 'true' && value !== 'false')
+      )
+        return res.status(400).json({ error: 'Invalid filter' })
+      if (search.length > 32) return res.status(400).json({ error: '搜索词最多 32 个字符' })
       let accountQuery = admin
         .from('user_accounts')
-        .select('id,username,role,enabled,allow_nsfw,created_at')
+        .select('id,username,role,enabled,allow_nsfw,created_at', { count: 'exact' })
         .order('created_at')
         .order('id')
-        .range(offset, offset + 49)
+        .range(offset, offset + pageSize - 1)
+      if (enabled !== undefined) accountQuery = accountQuery.eq('enabled', enabled === 'true')
+      if (nsfw === 'true') accountQuery = accountQuery.or('role.eq.admin,allow_nsfw.eq.true')
+      if (nsfw === 'false') accountQuery = accountQuery.eq('role', 'user').eq('allow_nsfw', false)
       if (search)
         accountQuery = accountQuery.ilike(
           'username',
-          `%${search.split('%').join('\\%').split('_').join('\\_')}%`,
+          `%${search.split('\\').join('\\\\').split('%').join('\\%').split('_').join('\\_')}%`,
         )
-      const { data, error } = await accountQuery
+      const { data, error, count } = await accountQuery
       if (error) throw error
-      const accountIds = (data ?? []).map(account => account.id)
-      const [deviceResult, authUsers] = await Promise.all([
-        accountIds.length
-          ? admin
-              .from('account_devices')
-              .select('user_id,label,first_seen_at,last_seen_at')
-              .in('user_id', accountIds)
-              .order('last_seen_at', { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
-        admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
-      ])
-      const { data: deviceRows, error: deviceError } = deviceResult
-      if (deviceError) throw deviceError
-      if (authUsers.error) throw authUsers.error
-      const signIns = new Map(
-        authUsers.data.users.map(user => [user.id, user.last_sign_in_at ?? null]),
-      )
-      const accounts = (data ?? []).map(account => ({
-        ...account,
-        last_sign_in_at: signIns.get(account.id) ?? null,
-        devices: (deviceRows ?? [])
-          .filter(device => device.user_id === account.id)
-          .map(({ label, first_seen_at, last_seen_at }) => ({
-            label,
-            first_seen_at,
-            last_seen_at,
-          })),
-      }))
-      return res
-        .status(200)
-        .json({ accounts, nextOffset: accounts.length === 50 ? offset + 50 : null })
+      return res.status(200).json({ accounts: data ?? [], total: count ?? 0 })
     }
     if (!req.headers['content-type']?.startsWith('application/json')) {
       return res.status(415).json({ error: 'Expected application/json' })

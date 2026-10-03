@@ -4,9 +4,8 @@ import { Button } from '@/shared/components/ui/button'
 import { importDeviceCollection, syncNow, useSyncStatus } from '@/shared/sync/service'
 import { useAuthStore } from '@/shared/store/authStore'
 import { SettingsSection } from './common'
-import AccountAdmin from './AccountAdmin'
 
-export default function CloudSync({ showAdmin = true }: { showAdmin?: boolean }) {
+export default function CloudSync() {
   const state = useSyncStatus()
   const { account, logout, error } = useAuthStore()
   const [busy, setBusy] = useState(false)
@@ -69,7 +68,6 @@ export default function CloudSync({ showAdmin = true }: { showAdmin?: boolean })
           )}
         </div>
       </SettingsSection>
-      {showAdmin && account?.role === 'admin' && <AccountAdmin />}
     </>
   )
 }
