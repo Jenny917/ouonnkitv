@@ -96,7 +96,11 @@ export default function SettingsLayout() {
     indicatorClassName: module.dotClass,
   }))
 
-  if (!isAdmin && location.pathname !== '/settings/playback') {
+  // The parent outlet retains this layout during its exit animation. Only
+  // redirect settings URLs; a destination outside settings must be allowed out.
+  const settingsPath = location.pathname.replace(/\/+$/, '')
+  const isSettingsPath = settingsPath === '/settings' || settingsPath.startsWith('/settings/')
+  if (!isAdmin && isSettingsPath && settingsPath !== '/settings/playback') {
     return <Navigate to="/settings/playback" replace />
   }
 
