@@ -35,6 +35,7 @@ export function createPlaybackLease(options: {
   acquired: (resumePosition?: number | null) => void
   conflict: (value: PlaybackConflict | null) => void
   notice: (message: string) => void
+  displaced?: () => void
   now?: () => number
 }) {
   const now = options.now ?? Date.now
@@ -109,7 +110,8 @@ export function createPlaybackLease(options: {
       })
       if (disposed || run !== revision || lease !== active) return
       if (reply.status !== 'held' || reply.lease_id !== active) {
-        lose('播放已切换到另一台设备。点击播放可重新申请接管。')
+        lose('播放已在另一台设备继续，本设备已暂停。点击播放可重新申请接管。')
+        options.displaced?.()
       } else {
         deadline = started + Math.min(reply.ttl_ms - 5000, 25000)
         currentLease()

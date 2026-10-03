@@ -21,6 +21,7 @@ function setup() {
     acquired: vi.fn(),
     conflict: vi.fn(),
     notice: vi.fn(),
+    displaced: vi.fn(),
     now: () => time,
   }
   return {
@@ -75,6 +76,12 @@ describe('playback ownership', () => {
     expect(controller.currentLease()).toBeNull()
     expect(options.pause).toHaveBeenCalledTimes(2)
     expect(options.notice).toHaveBeenLastCalledWith(expect.stringContaining('另一台设备'))
+    expect(options.displaced).toHaveBeenCalledOnce()
+    expect(options.pause.mock.invocationCallOrder[1]).toBeLessThan(
+      options.displaced.mock.invocationCallOrder[0],
+    )
+    await controller.renew()
+    expect(options.displaced).toHaveBeenCalledOnce()
   })
   it('allows brief outages but pauses before the server lease expires', async () => {
     const { controller, options, setTime } = setup()
@@ -86,6 +93,7 @@ describe('playback ownership', () => {
     setTime(25000)
     expect(controller.currentLease()).toBeNull()
     expect(options.pause).toHaveBeenCalledTimes(2)
+    expect(options.displaced).not.toHaveBeenCalled()
   })
   it('does not grant playback after an excessively slow response', async () => {
     const { controller, options, setTime } = setup()

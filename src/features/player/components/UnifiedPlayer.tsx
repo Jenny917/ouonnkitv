@@ -9,6 +9,14 @@ import { type DetailResult } from '@ouonnki/cms-core'
 import { createM3u8Processor, createHlsLoaderClass } from '@ouonnki/cms-core/m3u8'
 import { Button } from '@/shared/components/ui/button'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/components/ui/dialog'
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -266,6 +274,7 @@ export default function UnifiedPlayer() {
   const [gestureSeekPreviewTime, setGestureSeekPreviewTime] = useState<number | null>(null)
   const [activeArt, setActiveArt] = useState<Artplayer | null>(null)
   const [playbackNotice, setPlaybackNotice] = useState('')
+  const [playbackDisplaced, setPlaybackDisplaced] = useState(false)
   const [takeoverPrompt, setTakeoverPrompt] = useState<{
     conflict: PlaybackConflict
     confirm: () => void
@@ -960,6 +969,7 @@ export default function UnifiedPlayer() {
       timestamp: 0,
     }
     setPlaybackNotice('')
+    setPlaybackDisplaced(false)
     setTakeoverPrompt(null)
     const leaseController = createPlaybackLease({
       request: playbackLeaseClient(
@@ -973,6 +983,7 @@ export default function UnifiedPlayer() {
       isPlaying: () => !art.video.paused,
       pause: () => art.video.pause(),
       acquired: position => {
+        setPlaybackDisplaced(false)
         if (position != null && Number.isFinite(art.duration) && art.duration > 0) {
           art.seek = Math.min(position, Math.max(0, art.duration - 1))
         }
@@ -994,6 +1005,15 @@ export default function UnifiedPlayer() {
         )
       },
       notice: setPlaybackNotice,
+      displaced: () => {
+        if (art.fullscreen) art.fullscreen = false
+        if (art.fullscreenWeb) art.fullscreenWeb = false
+        if (document.pictureInPictureElement === art.video) {
+          void document.exitPictureInPicture().catch(() => {})
+        }
+        setTakeoverPrompt(null)
+        setPlaybackDisplaced(true)
+      },
     })
     const authorizePlay = () => {
       if (!leaseController.currentLease()) void leaseController.acquire()
@@ -1705,6 +1725,19 @@ export default function UnifiedPlayer() {
       )}
 
       <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Dialog open={playbackDisplaced} onOpenChange={setPlaybackDisplaced}>
+          <DialogContent className="h-fit">
+            <DialogHeader>
+              <DialogTitle>播放已切换到另一台设备</DialogTitle>
+              <DialogDescription>
+                此账号已在另一台设备继续播放，本设备已暂停。如需在这里继续观看，请关闭提示后点击播放，重新申请接管。
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setPlaybackDisplaced(false)}>知道了</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <ConfirmModal
           isOpen={!!takeoverPrompt}
           onClose={() => setTakeoverPrompt(null)}
