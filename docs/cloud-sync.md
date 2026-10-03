@@ -90,6 +90,8 @@ Keep the first two migrations if they are already applied; run the third provisi
 
 ## Verify after deployment
 
+The build runs `pnpm check:api-types` to check API routes with Vercel-style dependency resolution. Keep the `@supabase/*` public-hoist rule in `.npmrc`: Vercel's TypeScript language-service host needs these transitive declarations at public package paths under pnpm. If a cached deployment reports missing `SupabaseAuthClient` methods (`admin`, `signInWithPassword`, `updateUser`, or `signOut`), redeploy the updated code without the existing build cache so the corrected dependency layout is installed. No database migration is needed for this build fix.
+
 1. Create `a` and `b`; sign into `a` on two devices and `b` in a separate browser profile.
 2. Add a favorite and pause a video as `a`. Sync both devices; confirm both changes appear for `a` and neither appears for `b`.
 3. Delete a favorite, then reconnect a previously offline device. Confirm the deletion stays deleted.
